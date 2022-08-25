@@ -42,6 +42,7 @@ This causes Tumblesocks to ignore the setting of
     (define-key tumblesocks-view-mode-map "n" 'tumblesocks-view-next-post)
     (define-key tumblesocks-view-mode-map "c" 'tumblesocks-view-compose-new-post)
     (define-key tumblesocks-view-mode-map "g" 'tumblesocks-view-refresh)
+    (define-key tumblesocks-view-mode-map "G" 'tumblesocks-goto-page)
     (define-key tumblesocks-view-mode-map "s" 'tumblesocks-view-posts-tagged)
     (define-key tumblesocks-view-mode-map "r" 'tumblesocks-view-reblog-post-at-point)
     (define-key tumblesocks-view-mode-map (kbd "RET") 'tumblesocks-view-post-at-point)
@@ -105,9 +106,11 @@ This causes Tumblesocks to ignore the setting of
 (defun tumblesocks-view-post-at-point ()
   "Open the post under point in a new buffer, showing notes, etc"
   (interactive)
-  (when (get-text-property (point) 'tumblesocks-post-data)
-    (tumblesocks-view-post
-     (plist-get (get-text-property (point) 'tumblesocks-post-data) :id))))
+  (let* ((data (get-text-property (point) 'tumblesocks-post-data))
+	 (tumblesocks-blog (plist-get data :blog_name)))
+    (when data
+      (tumblesocks-view-post
+       (plist-get data :id)))))
 
 (defun tumblesocks-view-post-url-at-point ()
   "Open the post under point in your browser"
@@ -168,23 +171,28 @@ This causes Tumblesocks to ignore the setting of
 (defun tumblesocks-view-reblog-post-at-point ()
   "Reblog the post at point, if there is one."
   (interactive)
-  (when (get-text-property (point) 'tumblesocks-post-data)
+  (let* ((data (get-text-property (point) 'tumblesocks-post-data))
+	 (from-blog (plist-get data :blog_name))
+	 (post_id (format "%d" (plist-get data :id)))
+	 reblog_key)
+  (when data
     ;; Get the reblog key.
-    (let* ((post_id
-            (format "%d"
-                    (plist-get
-                     (get-text-property (point) 'tumblesocks-post-data) :id)))
+    (let* ((tumblesocks-blog from-blog)
            ;; we need to do another API fetch because
            ;; tumblesocks-post-data doesn't have reblog keys, by design
            (blog (tumblesocks-api-blog-posts
                   nil post_id nil "1" nil "true" nil "html"))
-           (post (car (plist-get blog :posts)))
-           (reblog_key (plist-get post :reblog_key)))
+           (post (car (plist-get blog :posts))))
+      (setq reblog_key (plist-get post :reblog_key)))
+
       (tumblesocks-api-reblog-post
        post_id reblog_key
        (read-string "(Optional) comments to add: "))
       (message "Reblogged.")
-      (tumblesocks-view-refresh))))
+      (let ((pos (point)))
+        (tumblesocks-view-refresh)
+        (goto-char pos))
+      )))
 
 
 
@@ -224,17 +232,17 @@ This causes Tumblesocks to ignore the setting of
 
 
 (defun tumblesocks-view-insert-prevpage-button ()
-  (insert-button "[<< Previous Page...]"
+  (insert-button "[< Previous Page]"
                  'action 'tumblesocks-view-previous-page-button-action
                  'tumblesocks-direction 'back)
   (let ((start (point)))
-    (insert (format "\nPage %d:"
+    (insert (format " Page %d:"
                     (1+ (floor (/ tumblesocks-view-current-offset
                                   tumblesocks-posts-per-page)))))
     (put-text-property start (point) 'face font-lock-comment-face))
   (insert "\n\n"))
 (defun tumblesocks-view-insert-nextpage-button ()
-  (insert-button "[Next Page... >>]"
+  (insert-button "[Next Page >]"
                  'action 'tumblesocks-view-next-page-button-action
                  'tumblesocks-direction 'forward))
 
@@ -262,6 +270,14 @@ We show `tumblesocks-posts-per-page' posts per page."
   (interactive)
   (setq tumblesocks-view-current-offset
         (+ tumblesocks-view-current-offset tumblesocks-posts-per-page))
+  (tumblesocks-view-refresh))
+
+(defun tumblesocks-goto-page (page)
+  "Go forward a page (into older posts)
+
+We show `tumblesocks-posts-per-page' posts per page."
+  (interactive "nGoto Page: ")
+  (setq tumblesocks-view-current-offset (* (1- page) tumblesocks-posts-per-page))
   (tumblesocks-view-refresh))
 
 (defun tumblesocks-view-render-blogdata (blogdata total-posts)
@@ -341,24 +357,33 @@ better suited to inserting each post."
     (setq begin (point))
     (insert blog_name ":")
     (setq end_bname (point))
-    ;; Title
-    (insert " ")
-    (cond
-     (title (tumblesocks-view-insert-html-fragment title t))
-     (caption (tumblesocks-view-insert-html-fragment caption t))
-     (question (tumblesocks-view-insert-html-fragment question t))
-     (t (insert " ")))
     ;; Notes
     (when (and note_count (> note_count 0))
       (insert " (" (format "%d" note_count) " note"
               (if (= 1 note_count) "" "s") ")"))
     (when liked
-      (insert " (Liked)"))
+      (insert " ❤️(Liked)"))
+    (unless verbose
+      (insert " " date))
+    (insert (make-string (- (window-body-width) (current-column)) ? ))
+    (put-text-property end_bname (point) 'face
+                       (list '(:weight bold)
+                             'highlight))
+
+    ;; Title
+    ;; (insert " ")
+    (cond
+     (title (tumblesocks-view-insert-html-fragment title))
+     (caption (tumblesocks-view-insert-html-fragment caption))
+     (question (tumblesocks-view-insert-html-fragment question))
+     (t (insert " ")))
     (insert "\n")
     (when verbose
+      (insert "Date: " date)
+      (when tags
+	(insert
+	 "\nTags: " (mapconcat '(lambda (x) (concat "#" x)) tags ", ")))
       (insert
-       "Date: " date
-       "\nTags: " (mapconcat '(lambda (x) (concat "#" x)) tags ", ")
        "\nPermalink: ")
       (tumblesocks-view-insert-parsed-html-fragment
        `(a ((href . ,post_url)) ,post_url) t)
@@ -367,9 +392,7 @@ better suited to inserting each post."
                        (list '(:inverse-video t)
                              '(:weight bold)
                              font-lock-keyword-face))
-    (put-text-property end_bname (point) 'face
-                       (list '(:weight bold)
-                             'highlight))))
+    ))
 
 (defun tumblesocks-view-insert-text ()
   (tumblesocks-view-insert-html-fragment body)
@@ -399,8 +422,8 @@ better suited to inserting each post."
                                  (plist-get photodata :caption))))
                       photos)))))
     (tumblesocks-view-insert-parsed-html-fragment photo-html-frag)
-    (when caption
-      (tumblesocks-view-insert-html-fragment caption))
+    ;; (when caption
+    ;;   (tumblesocks-view-insert-html-fragment caption))
     (insert "\n")))
 
 (defun tumblesocks-view-insert-quote ()
@@ -443,6 +466,7 @@ better suited to inserting each post."
   "Create a new buffer to begin viewing a blog."
   (pop-to-buffer-same-window (concat "*Tumblr: " blogtitle "*"))
   (setq buffer-read-only nil)
+  (setq buffer-file-coding-system 'latin-1)
   (erase-buffer)
   ;; We must save the current pagination offset;
   ;; tumblesocks-refresh-view is called when we move through pages.
@@ -498,6 +522,9 @@ better suited to inserting each post."
           `(lambda () (tumblesocks-view-blog ,blogname t))))) ; <-- CLOSURE HACK :p
 
 ;;;###autoload
+(defalias 'tumblesocks 'tumblesocks-view-dashboard)
+
+;;;###autoload
 (defun tumblesocks-view-dashboard (&optional preserve-page-offset)
   "View the posts on your dashboard.
 
@@ -509,11 +536,11 @@ You can browse around, edit, and delete posts from here.
   (let ((dashboard-data (tumblesocks-api-user-dashboard
                          tumblesocks-posts-per-page
                          tumblesocks-view-current-offset nil nil nil nil)))
-    (let ((begin (point)))
-      (insert "Dashboard")
-      (center-line)
-      (insert "\n\n")
-      (put-text-property begin (point) 'face font-lock-comment-face))
+    ;; (let ((begin (point)))
+      ;; (insert "Dashboard")
+      ;; (center-line)
+      ;; (insert "\n\n")
+      ;; (put-text-property begin (point) 'face font-lock-comment-face))
     (tumblesocks-view-render-blogdata
      (plist-get dashboard-data :posts)
      99999) ; allow them to browse practically infinite posts
@@ -587,16 +614,18 @@ You can browse around, edit, and delete posts from here.
 (defun tumblesocks-view-like-post-at-point (like-p)
   "Like the post underneath point. With prefix arg (C-u), unlike it."
   (interactive "P")
-  (when (get-text-property (point) 'tumblesocks-post-data)
+  (let* ((data (get-text-property (point) 'tumblesocks-post-data))
+	 (from-blog (plist-get data :blog_name))
+	 (post_id (format "%d" (plist-get data :id)))
+	 reblog_key)
+  (when data
     ;; Get the reblog key.
-    (let* ((post_id
-            (format "%d" (plist-get
-                          (get-text-property (point) 'tumblesocks-post-data)
-                          :id)))
+    (let* ((tumblesocks-blog from-blog)
            (blog (tumblesocks-api-blog-posts
                   nil post_id nil "1" nil "true" nil "html"))
-           (post (car (plist-get blog :posts)))
-           (reblog_key (plist-get post :reblog_key)))
+           (post (car (plist-get blog :posts))))
+      (setq reblog_key (plist-get post :reblog_key)))
+
       (if (not like-p)
           (progn
             (tumblesocks-api-user-like post_id reblog_key)
@@ -648,12 +677,14 @@ You can browse around, edit, and delete posts from here.
     "---"
     ["Next Post" tumblesocks-view-next-post
      :help "Move to next post."]
+    ["Previous Post" tumblesocks-view-previous-post
+     :help "Move to the previous post."]
     ["View Post" tumblesocks-view-post-at-point
      :help "Open the post underneath the cursor in a new page, showing its notes."]
     ["View Blog" tumblesocks-view-blog
      :help "Visit Blog."]
-    ["Previous Post" tumblesocks-view-previous-post
-     :help "Move to the previous post."]
+    ["Goto Page" tumblesocks-goto-page
+     :help "Goto Page."]
     "--"
     ["Search" tumblesocks-view-posts-tagged
      :help "Search for posts with a certain tag."]    
