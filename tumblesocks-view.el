@@ -231,16 +231,19 @@ This causes Tumblesocks to ignore the setting of
     (tumblesocks-view-insert-parsed-html-fragment html-frag-parsed inline)))
 
 
-(defun tumblesocks-view-insert-prevpage-button ()
+(defun tumblesocks-view-insert-prevpage-button (total)
   (insert-button "[< Previous Page]"
                  'action 'tumblesocks-view-previous-page-button-action
                  'tumblesocks-direction 'back)
   (let ((start (point)))
-    (insert (format " Page %d:"
+    (insert (format " Page %d"
                     (1+ (floor (/ tumblesocks-view-current-offset
                                   tumblesocks-posts-per-page)))))
+    (if (< total 1000)
+	(insert (format " of %d" total)))
     (put-text-property start (point) 'face font-lock-comment-face))
   (insert "\n\n"))
+
 (defun tumblesocks-view-insert-nextpage-button ()
   (insert-button "[Next Page >]"
                  'action 'tumblesocks-view-next-page-button-action
@@ -290,7 +293,8 @@ blogdata to be filtered with the 'text' filter.)"
   ;; info about the post API.
   (setq tumblesocks-view-content-start (point-marker))
   (when (> tumblesocks-view-current-offset 0)
-    (tumblesocks-view-insert-prevpage-button))
+    (tumblesocks-view-insert-prevpage-button
+     (ceiling (/ total-posts tumblesocks-posts-per-page 1.0))))
   (if (> (length blogdata) 0)
       (progn
         (dolist (post blogdata)
@@ -366,12 +370,12 @@ better suited to inserting each post."
     (unless verbose
       (insert " " date))
     (insert (make-string (- (window-body-width) (current-column)) ? ))
+    (insert "\n")
     (put-text-property end_bname (point) 'face
                        (list '(:weight bold)
                              'highlight))
 
     ;; Title
-    ;; (insert " ")
     (cond
      (title (tumblesocks-view-insert-html-fragment title))
      (caption (tumblesocks-view-insert-html-fragment caption))
@@ -382,7 +386,11 @@ better suited to inserting each post."
       (insert "Date: " date)
       (when tags
 	(insert
-	 "\nTags: " (mapconcat '(lambda (x) (concat "#" x)) tags ", ")))
+	 "\nTags: " (mapconcat '(lambda (x)
+				  (propertize
+				   (concat "#" x)
+				   'tumblesocks-tag x))
+			       tags ", ")))
       (insert
        "\nPermalink: ")
       (tumblesocks-view-insert-parsed-html-fragment
@@ -395,7 +403,8 @@ better suited to inserting each post."
     ))
 
 (defun tumblesocks-view-insert-text ()
-  (tumblesocks-view-insert-html-fragment body)
+  (tumblesocks-view-insert-html-fragment
+   (decode-coding-string (string-make-unibyte body) 'utf-8))
   (insert "\n"))
 
 (defun tumblesocks-view-insert-photo ()
@@ -485,25 +494,30 @@ better suited to inserting each post."
   (interactive
    (list (read-string
           "Blog to view: "
-          (if (get-text-property (point) 'tumblesocks-post-data)
-              (concat
-               (plist-get (get-text-property (point) 'tumblesocks-post-data)
-                          :blog_name)
-               ".tumblr.com")
-            ""))))
+          ;; (if (get-text-property (point) 'tumblesocks-post-data)
+          ;;     (concat
+          ;;      (plist-get (get-text-property (point) 'tumblesocks-post-data)
+          ;;                 :blog_name)
+          ;;      ".tumblr.com")
+          ;;   "")
+	  (tumblesocks-view--dwim-at-point)
+	  )))
   (let* ((tumblesocks-blog blogname) ; dynamic binding the blog!
-         (blog-info (plist-get (tumblesocks-api-blog-info) :blog))
+         ;; (blog-info (plist-get (tumblesocks-api-blog-info) :blog))
          (returned-data (tumblesocks-api-blog-posts
                          nil nil nil tumblesocks-posts-per-page
-                         tumblesocks-view-current-offset nil nil "html")))
+                         tumblesocks-view-current-offset nil nil "html"))
+	 (blog-info (plist-get returned-data :blog))
+	 (title (decode-coding-string
+		 (string-make-unibyte (plist-get blog-info :title)) 'utf-8)))
     (tumblesocks-view-prepare-buffer
-     (plist-get blog-info :title)
+     title
      preserve-page-offset)
     ;; Draw blog info
     (let ((begin (point)))
       (tumblesocks-view-insert-parsed-html-fragment
        `(img ((src . ,(tumblesocks-api-avatar-url)))) t)
-      (insert (plist-get blog-info :title) " - "
+      (insert title " - "
               (plist-get blog-info :url))
       (insert (format "\n%d post%s"
                       (plist-get blog-info :posts)
@@ -532,10 +546,13 @@ You can browse around, edit, and delete posts from here.
 
 \\{tumblesocks-view-mode-map}"
   (interactive)
+  (setq tumblesocks-view-current-offset
+	(if preserve-page-offset tumblesocks-view-current-offset 0))
   (tumblesocks-view-prepare-buffer "Dashboard" preserve-page-offset)
   (let ((dashboard-data (tumblesocks-api-user-dashboard
                          tumblesocks-posts-per-page
-                         tumblesocks-view-current-offset nil nil nil nil)))
+                         tumblesocks-view-current-offset
+			 nil nil nil nil)))
     ;; (let ((begin (point)))
       ;; (insert "Dashboard")
       ;; (center-line)
@@ -636,13 +653,15 @@ You can browse around, edit, and delete posts from here.
         (tumblesocks-view-refresh)
         (goto-char pos)))))
 
- (defun tumblesocks-view--dwim-at-point ()
+(defun tumblesocks-view--dwim-at-point ()
   "If there's an active selection, return that. Otherwise, get
    the symbol at point."
-  (if (use-region-p)
-      (buffer-substring-no-properties (region-beginning) (region-end))
-    (if (symbol-at-point)
-        (symbol-name (symbol-at-point)))))
+  (cond ((use-region-p)
+	 (buffer-substring-no-properties (region-beginning) (region-end)))
+	 ((get-text-property (point) 'tumblesocks-tag))
+	 ((and (get-text-property (point) 'tumblesocks-post-data)
+	       (symbol-at-point))
+          (symbol-name (symbol-at-point)))))
 
 (defun tumblesocks-view-posts-tagged (tag)
   "Search for posts with the given tag."
