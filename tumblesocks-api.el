@@ -27,6 +27,17 @@ http://www.tumblr.com/oauth/apps"
   :type 'string
   :group 'tumblesocks)
 
+(defcustom tumblesocks-callback-url
+  "http://www.sneakygcr.net/oauth-dummy-endpoint.htm"
+  "Our Tumblr OAuth consumer secret key.
+
+This goes hand-in-hand with `tumblesocks-consumer-key'.
+
+If you need to register your own app, do that at
+http://www.tumblr.com/oauth/apps"
+  :type 'string
+  :group 'tumblesocks)
+
 (defcustom tumblesocks-blog nil
   "Your blog name, like xxx.tumblr.com.
 
@@ -57,7 +68,7 @@ call `tumblesocks-api-reauthenticate' after this."
   (when (or (not tumblesocks-secret-key)
             (not tumblesocks-consumer-key))
     (error "You MUST set both `tumblesocks-secret-key' and `tumblesocks-consumer-key' to use tumblesocks."))
-  (let ((oauth-callback-url "http://www.sneakygcr.net/oauth-dummy-endpoint.htm"))
+  (let ((oauth-callback-url tumblesocks-callback-url))
     (when (file-exists-p tumblesocks-token-file)
       (save-excursion
         (find-file tumblesocks-token-file)
@@ -105,8 +116,8 @@ call `tumblesocks-api-reauthenticate' after this."
            (tumblesocks-api-test-auth))
        (message "Please see http://github.com/gcr/tumblesocks for help.")))))
 
-(defun tumblesocks-api-url (&rest args)
-  (apply 'concat "https://api.tumblr.com/v2" args))
+;; (defun tumblesocks-api-url (&rest args)
+;;   (apply 'concat "https://api.tumblr.com/v2" args))
 
 (defun tumblesocks-api-http-noauth-get (url)
   "Post to an unauthenticated Tumblr API endpoint (url),
@@ -131,12 +142,12 @@ using the given POST parameters (params, a keyword plist).
 
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
-  (let ((oauth-callback-url "http://www.sneakygcr.net/oauth-dummy-endpoint.htm"))
+  (let ((oauth-callback-url tumblesocks-callback-url))
     (with-current-buffer (oauth-url-retrieve
                           tumblesocks-token
                           (concat url "?api_key=" tumblesocks-consumer-key
                                   (mapconcat
-                                   '(lambda (x)
+                                   #'(lambda (x)
                                       (concat "&" (url-hexify-string (format "%s" (car x)))
                                               "=" (url-hexify-string (format "%s" (cdr x)))))
                                    (tumblesocks-plist-to-alist params) "")))
@@ -151,7 +162,7 @@ error if the error code is not in the 200 category."
   (with-current-buffer (url-retrieve-synchronously
                         (concat url "?api_key=" tumblesocks-consumer-key
                                 (mapconcat
-                                 '(lambda (x)
+                                 #'(lambda (x)
                                     (concat "&" (url-hexify-string (format "%s" (car x)))
                                             "=" (url-hexify-string (format "%s" (cdr x)))))
                                  (tumblesocks-plist-to-alist params) "")))
@@ -164,11 +175,11 @@ using the given POST parameters (params, an alist).
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
   (unless tumblesocks-token (tumblesocks-api-reauthenticate))
-  (let ((oauth-callback-url "http://www.sneakygcr.net/oauth-dummy-endpoint.htm"))
+  (let ((oauth-callback-url tumblesocks-callback-url))
     (with-current-buffer
         (oauth-post-url
          tumblesocks-token url
-         (mapcar '(lambda (x)
+         (mapcar #'(lambda (x)
                     (cons (format "%s" (car x))
                           (format "%s" (cdr x))))
                  (tumblesocks-plist-to-alist params)))
@@ -200,8 +211,10 @@ returning JSON or signaling an error for other requests."
              (json-object-type 'plist)
              (json-array-type 'list)
              (json-false nil))
-        (plist-get (json-read-from-string json-response)
-                   :response))))))
+        ;; (plist-get (json-read-from-string json-response)
+        ;;            :response)
+	(json-parse-string json-response)
+	)))))
 
 
 
@@ -383,3 +396,30 @@ If you're making a text post, for example, args should be something like
     (tumblesocks-api-http-apikey-get
      (tumblesocks-api-url "/tagged")
      args)))
+
+(defun tumblesocks-api-user-dashboard-reddit (&optional limit offset type since_id reblog_info notes_info)
+  "Gather information about the logged in user's dashboard"
+  (let ((args (append
+               (and limit `(:limit ,limit))
+               (and offset `(:offset ,offset))
+               (and type `(:offset ,type))
+               (and since_id `(:since_id ,since_id))
+               (and reblog_info `(:reblog_info ,reblog_info))
+               (and notes_info `(:notes_info ,notes_info)))))
+    ;; (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/dashboard") args)
+    (tumblesocks-api-http-apikey-get "https://www.reddit.com/.json" args)
+    ))
+
+(defun tumblesocks-api-post-details-reddit (&optional url limit offset type since_id reblog_info notes_info)
+  "Gather information about the logged in user's dashboard"
+  ;; (unless tumblesocks-blog (error "Which blog? Please set `tumblesocks-blog'"))
+  (let ((args (append
+               (and limit `(:limit ,limit))
+               (and offset `(:offset ,offset))
+               (and type `(:offset ,type))
+               (and since_id `(:since_id ,since_id))
+               (and reblog_info `(:reblog_info ,reblog_info))
+               (and notes_info `(:notes_info ,notes_info)))))
+    ;; (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/dashboard") args)
+    (tumblesocks-api-http-apikey-get (concat "https://www.reddit.com" url ".json") args)
+    ))

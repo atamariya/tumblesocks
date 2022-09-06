@@ -29,19 +29,20 @@
 
 (defconst sm--base-url-twitter "https://www.twitter.com")
 (defconst sm--base-url-reddit "https://www.reddit.com")
-(defconst sm--base-url-tumblr "https://www.tumblr.com")
+(defconst sm--base-url-tumblr "https://api.tumblr.com/v2")
 
 (defvar sm--client-type 'tumblr)
 (make-variable-buffer-local 'sm--client-type)
+(defvar sm--date-format "%A %-e %B")
 
 (defvar sm--post-def-alist
-  '((vars    . (channel-name post-url type date title body likes liked
-			     note_count shared notes tags))
-    (tumblr  . (blog_name post_url type date title body note_count liked
-			  note_count shared notes tags
-			  reblog_key))
-    (reddit  . (subreddit permalink type date title selftext score likes
-			  note_count shared notes tags
+  '((vars    . (channel-name author post-url type date title body num_likes liked
+			     num_shared shared notes tags reblog_key))
+    (tumblr  . (blog_name blog_name post_url type date title body note_count liked
+			  note_count shared notes tags reblog_key
+			  note_count timestamp))
+    (reddit  . (subreddit author permalink type date title selftext score likes
+			  note_count shared notes tags reblog_key
 			  created num_comments))
     (twitter . (sub_name post-url type date title body likes liked
 			 note_count shared notes tags)))
@@ -67,9 +68,10 @@
 			     ;; (message "%s" i)
 			     (list
 			      (if (< i n) (nth i vars) v)
-			      `(plist-get ,temp
-					  ,(intern (concat ":" (symbol-name v))))))
+			      `(gethash ,(symbol-name v) ,temp)))
 			 (cdr (assoc 'tumblr sm--post-def-alist))))
+	     (date (format-time-string sm--date-format
+				       (decode-time timestamp)))
 	     (num_comments note_count))
 	  . ,temp1))
        ('reddit
@@ -87,21 +89,113 @@
 			 (cdr (assoc 'reddit sm--post-def-alist))))
 	     (type (if (eq (gethash "is_video" ,temp) t)
 		       "video" "text" ))
-	     (date (format-time-string "%A %-e %B"
+	     (date (format-time-string sm--date-format
 				       (decode-time created))))
 	  . ,temp1))
        (_ (let* ((channel-name "default")) . ,temp1))
        )))
 
+(defmacro sm--api-dashboard ()
+  ;; Services use different fields as id for fetching
+  (let* ()
+    `(pcase sm--client-type
+       ('tumblr
+	(tumblesocks-api-user-dashboard
+         tumblesocks-posts-per-page
+         tumblesocks-view-current-offset
+	 nil nil nil nil))
+       ('reddit
+	(tumblesocks-api-user-dashboard-reddit
+         tumblesocks-posts-per-page
+         tumblesocks-view-current-offset
+	 nil nil nil nil))
+       )))
+
+(defmacro sm--api-post-details (post)
+  ;; Services use different fields as id for fetching
+  (let* ((data post))
+    `(pcase sm--client-type
+       ('tumblr
+	(tumblesocks-api-blog-posts
+         nil (plist-get ,data :id) nil "1" nil nil "true" "html"))
+       ('reddit
+	(tumblesocks-api-post-details-reddit (plist-get ,data :id)))
+       )))
+
+(defmacro sm--get-id (post)
+  ;; Services use different fields as id for fetching
+  (let* ((data post))
+    `(pcase sm--client-type
+       ('tumblr
+	(gethash "id" ,data))
+       ('reddit
+	(gethash "permalink" ,data))
+       )))
+
+(defmacro sm--get-url (post)
+  ;; Services might need base to be added to the url
+  (let* ((data post))
+    `(pcase sm--client-type
+       ('tumblr
+	(gethash "post_url" ,data))
+       ('reddit
+	(concat sm--base-url-reddit
+		(gethash "permalink" ,data)))
+       )))
+
+(defmacro sm--get-list (data)
+  ;; Fetch post list from response
+  (let* ((temp data))
+    `(pcase sm--client-type
+       ('tumblr
+	(json-resolve "response.posts" ,temp t))
+       ('reddit
+	(json-resolve "data.children" ,temp t))
+       )))
+
+(defmacro sm--get-post-from-list (data i)
+  ;; Fetch ith post from list
+  (let* ((temp data)
+	 (temp1 i))
+    `(pcase sm--client-type
+       ('tumblr
+	(aref ,temp ,temp1))
+       ('reddit
+	(gethash "data" (aref ,temp ,temp1)))
+       )))
+
+(defmacro sm--get-post-from-details (data)
+  ;; Fetch post from detail object
+  (let* ((temp data))
+    `(pcase sm--client-type
+       ('tumblr
+	(json-resolve "response.posts[0]" ,temp t))
+       ('reddit
+	(json-resolve "[0].data.children[0].data" ,temp t))
+       )))
+
+(defmacro sm--get-comments-from-details (data)
+  ;; Fetch comments from detail object
+  (let* ((temp data))
+    `(pcase sm--client-type
+       ('tumblr
+	(json-resolve "response.notes" ,temp t))
+       ('reddit
+	(json-resolve "[1].data.children[0]" ,temp t))
+       )))
+
+
 (defun sm--render-post (post &optional verbose-header)
   (let* ((begin-post-area (point)))
-    (setq sm--client-type 'reddit)
+    ;; (pp post)
     (sm--with-post
      post
      ;; '(:blog_name "test" :author "a")
      ;; (pp channel-name)
-     (sm--render-header channel-name post-url date title likes liked
-			note_count shared tags num_comments
+     (sm--render-header channel-name author (sm--get-url post) date
+			(if (eq title :null) nil title) num_likes
+			(if (string= liked "true") t)
+			num_shared shared tags num_comments
 			verbose-header)
      (cond
       ((null body) nil)
@@ -112,10 +206,16 @@
      ;; Record this post data so we know how to read it next
      (put-text-property begin-post-area (point)
                         'tumblesocks-post-data
-                        post))
+			`(:title ,title
+				 :id ,(sm--get-id post)
+				 :channel-name ,channel-name
+				 :reblog_key ,reblog_key
+				 :service ,sm--client-type)
+                        ;; post
+			))
     ))
 
-(defun sm--render-header (channel-name post-url date title likes liked
+(defun sm--render-header (channel-name _author post-url date title likes liked
 				       note_count shared tags num_comments
 				       &optional verbose)
   "Draw the header for the current post, optionally being verbose."
@@ -124,13 +224,13 @@
     (insert (format "%-22s" channel-name))
     (setq end_bname (point))
     ;; Notes
-    (when (and note_count (> note_count 0))
-      (insert " (" (format "%d" note_count) " vote"
-              (if (= 1 note_count) "" "s") ")"))
+    ;; (when (and note_count (> note_count 0))
+    ;;   (insert " (" (format "%d" note_count) " vote"
+    ;;           (if (= 1 note_count) "" "s") ")"))
 
     (insert (format " %s %-5d" (if liked "❤️" "🤍") likes))
     ;; (insert "👎 👍 🔁")
-    (insert (format "\t💬 %d" num_comments) " comments")
+    (insert (format "\t💬 %-3d" num_comments) " comments")
 
     (unless verbose
       (insert "\t" date))
@@ -150,7 +250,7 @@
     (when verbose
       (insert "\n")
       (insert "Date: " date)
-      (when tags
+      (when (and tags (> (length tags) 0))
 	(insert
 	 "\nTags: " (mapconcat #'(lambda (x)
 				  (propertize
@@ -199,5 +299,12 @@
     ;; (when caption
     ;;   (tumblesocks-view-insert-html-fragment caption))
     (insert "\n")))
+
+(defun tumblesocks-api-url (&rest args)
+  (apply 'concat (pcase sm--client-type
+		   ('tumblr sm--base-url-tumblr)
+		   ('reddit sm--base-url-reddit)
+		   ('twitter sm--base-url-twitter))
+	 args))
 
 (provide 'sm)

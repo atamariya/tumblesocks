@@ -6,6 +6,7 @@
 (require 'tumblesocks-api)
 (require 'tumblesocks-compose)
 (require 'shr)
+(require 'sm)
 
 (provide 'tumblesocks-view)
 
@@ -107,7 +108,8 @@ This causes Tumblesocks to ignore the setting of
   "Open the post under point in a new buffer, showing notes, etc"
   (interactive)
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
-	 (tumblesocks-blog (plist-get data :blog_name)))
+	 (sm--client-type (plist-get data :service))
+	 (tumblesocks-blog (plist-get data :channel-name)))
     (when data
       (tumblesocks-view-post
        (plist-get data :id)))))
@@ -172,18 +174,18 @@ This causes Tumblesocks to ignore the setting of
   "Reblog the post at point, if there is one."
   (interactive)
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
-	 (from-blog (plist-get data :blog_name))
+	 (from-blog (plist-get data :channel-name))
 	 (post_id (format "%d" (plist-get data :id)))
-	 reblog_key)
+	 (reblog_key (plist-get data :reblog_key)))
   (when data
     ;; Get the reblog key.
-    (let* ((tumblesocks-blog from-blog)
-           ;; we need to do another API fetch because
-           ;; tumblesocks-post-data doesn't have reblog keys, by design
-           (blog (tumblesocks-api-blog-posts
-                  nil post_id nil "1" nil "true" nil "html"))
-           (post (car (plist-get blog :posts))))
-      (setq reblog_key (plist-get post :reblog_key)))
+    ;; (let* ((tumblesocks-blog from-blog)
+    ;;        ;; we need to do another API fetch because
+    ;;        ;; tumblesocks-post-data doesn't have reblog keys, by design
+    ;;        (blog (tumblesocks-api-blog-posts
+    ;;               nil post_id nil "1" nil "true" nil "html"))
+    ;;        (post (car (plist-get blog :posts))))
+    ;;   (setq reblog_key (plist-get post :reblog_key)))
 
       (tumblesocks-api-reblog-post
        post_id reblog_key
@@ -297,8 +299,11 @@ blogdata to be filtered with the 'text' filter.)"
      (ceiling (/ total-posts tumblesocks-posts-per-page 1.0))))
   (if (> (length blogdata) 0)
       (progn
-        (dolist (post blogdata)
-          (tumblesocks-view-render-post post))
+        (dotimes (i (length blogdata))
+          ;; (tumblesocks-view-render-post1 (gethash "data" (aref blogdata i)))
+          ;; (sm--render-post (gethash "data" (aref blogdata i)))
+          (sm--render-post (sm--get-post-from-list blogdata i))
+	  )
         ;; Pagination button anyone?
         (if (> total-posts (+ tumblesocks-view-current-offset
                               (length blogdata)))
@@ -473,7 +478,8 @@ better suited to inserting each post."
 
 (defun tumblesocks-view-prepare-buffer (blogtitle &optional preserve-page-offset)
   "Create a new buffer to begin viewing a blog."
-  (pop-to-buffer-same-window (concat "*Tumblr: " blogtitle "*"))
+  (pop-to-buffer-same-window (format "*%s: %s*" sm--client-type
+				     (or blogtitle "")))
   (setq buffer-read-only nil)
   (setq buffer-file-coding-system 'latin-1)
   (erase-buffer)
@@ -548,24 +554,29 @@ You can browse around, edit, and delete posts from here.
   (interactive)
   (setq tumblesocks-view-current-offset
 	(if preserve-page-offset tumblesocks-view-current-offset 0))
-  (tumblesocks-view-prepare-buffer "Dashboard" preserve-page-offset)
-  (let ((dashboard-data (tumblesocks-api-user-dashboard
-                         tumblesocks-posts-per-page
-                         tumblesocks-view-current-offset
-			 nil nil nil nil)))
+  (let* (;(sm--client-type 'reddit)
+	 (dashboard-data (sm--api-dashboard)
+			 ;; (tumblesocks-api-user-dashboard-reddit
+                         ;;  tumblesocks-posts-per-page
+                         ;;  tumblesocks-view-current-offset
+			 ;;  nil nil nil nil)
+			 ))
+    (tumblesocks-view-prepare-buffer "Dashboard" preserve-page-offset)
     ;; (let ((begin (point)))
       ;; (insert "Dashboard")
       ;; (center-line)
       ;; (insert "\n\n")
       ;; (put-text-property begin (point) 'face font-lock-comment-face))
     (tumblesocks-view-render-blogdata
-     (plist-get dashboard-data :posts)
+     ;; (plist-get dashboard-data :posts)
+     ;; (json-resolve "data.children" dashboard-data t)
+     (sm--get-list dashboard-data)
      99999) ; allow them to browse practically infinite posts
     (tumblesocks-view-finishrender)
     (setq tumblesocks-view-refresh-action
           '(lambda () (tumblesocks-view-dashboard t)))))
 
-(defun tumblesocks-view-post (post_id)
+(defun tumblesocks-view-post1 (post_id)
   "View a post in its own dedicated buffer, with notes"
   (interactive "sPost ID: ")
   (unless (stringp post_id)
@@ -588,6 +599,28 @@ You can browse around, edit, and delete posts from here.
     (setq tumblesocks-view-refresh-action
           `(lambda () (tumblesocks-view-post ,post_id)))))
 
+(defun tumblesocks-view-post (post_id)
+  "View a post in its own dedicated buffer, with notes"
+  (interactive "sPost ID: ")
+  (unless (stringp post_id)
+    (setq post_id (format "%d" post_id)))
+  (let* ((data (get-text-property (point) 'tumblesocks-post-data))
+	 (blog (sm--api-post-details data))
+         (post (sm--get-post-from-details blog))
+         (notes (sm--get-comments-from-details blog))
+	 )
+    (tumblesocks-view-prepare-buffer
+     (plist-get data :title))
+    (setq tumblesocks-view-content-start (point-marker))
+    (if tumblesocks-show-full-images-in-post
+        (let ((tumblesocks-desired-image-size 0))
+          (sm--render-post post t))
+      (sm--render-post post t))
+    (tumblesocks-view-render-notes notes)
+    (tumblesocks-view-finishrender)
+    (setq tumblesocks-view-refresh-action
+          `(lambda () (tumblesocks-view-post ,post_id)))))
+
 (defun tumblesocks-view-render-notes (notes)
   "Render the given notes into the current buffer."
   (let ((start (point)))
@@ -600,48 +633,49 @@ You can browse around, edit, and delete posts from here.
               (setq start (point))))
       (insert "-- Notes:\n")
       (comment-that)
-      (dolist (note notes)
-        (tumblesocks-bind-plist-keys note
-           (type post_id blog_name blog_url reply_text answer_text added_text)
-           (cond ((string= type "posted")
-                  (insert blog_name " posted this"))
-                 ((string= type "answer")
-                  (insert blog_name " answers:\n  ")
-                  (comment-that)
-                  (tumblesocks-view-insert-html-fragment answer_text t)
-                  (bold-that))
-                 ((string= type "reblog")
-                  (insert blog_name " reblogged this on " blog_url))
-                 ((string= type "like")
-                  (insert blog_name " liked this"))
-                 ((string= type "reply")
-                  (insert blog_name " says: ")
-                  (comment-that)
-                  (tumblesocks-view-insert-html-fragment reply_text t)
-                  (bold-that))
-                 (t (insert (format "%S" note))))
-           (when added_text
-             (insert "\n  ")
-             (comment-that)
-             (insert added_text)
-             (bold-that))
-           (insert "\n")
-           (comment-that))))))
+      ;; (dolist (note notes)
+      ;;   (tumblesocks-bind-plist-keys note
+      ;;      (type post_id blog_name blog_url reply_text answer_text added_text)
+      ;;      (cond ((string= type "posted")
+      ;;             (insert blog_name " posted this"))
+      ;;            ((string= type "answer")
+      ;;             (insert blog_name " answers:\n  ")
+      ;;             (comment-that)
+      ;;             (tumblesocks-view-insert-html-fragment answer_text t)
+      ;;             (bold-that))
+      ;;            ((string= type "reblog")
+      ;;             (insert blog_name " reblogged this on " blog_url))
+      ;;            ((string= type "like")
+      ;;             (insert blog_name " liked this"))
+      ;;            ((string= type "reply")
+      ;;             (insert blog_name " says: ")
+      ;;             (comment-that)
+      ;;             (tumblesocks-view-insert-html-fragment reply_text t)
+      ;;             (bold-that))
+      ;;            (t (insert (format "%S" note))))
+      ;;      (when added_text
+      ;;        (insert "\n  ")
+      ;;        (comment-that)
+      ;;        (insert added_text)
+      ;;        (bold-that))
+      ;;      (insert "\n")
+      ;;      (comment-that)))
+      )))
 
 (defun tumblesocks-view-like-post-at-point (like-p)
   "Like the post underneath point. With prefix arg (C-u), unlike it."
   (interactive "P")
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
-	 (from-blog (plist-get data :blog_name))
+	 (from-blog (plist-get data :channel-name))
 	 (post_id (format "%d" (plist-get data :id)))
-	 reblog_key)
+	 (reblog_key (plist-get data :reblog_key)))
   (when data
     ;; Get the reblog key.
-    (let* ((tumblesocks-blog from-blog)
-           (blog (tumblesocks-api-blog-posts
-                  nil post_id nil "1" nil "true" nil "html"))
-           (post (car (plist-get blog :posts))))
-      (setq reblog_key (plist-get post :reblog_key)))
+    ;; (let* ((tumblesocks-blog from-blog)
+    ;;        (blog (tumblesocks-api-blog-posts
+    ;;               nil post_id nil "1" nil "true" nil "html"))
+    ;;        (post (car (plist-get blog :posts))))
+    ;;   (setq reblog_key (plist-get post :reblog_key)))
 
       (if (not like-p)
           (progn
