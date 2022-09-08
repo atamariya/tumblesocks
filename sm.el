@@ -96,7 +96,6 @@
        )))
 
 (defmacro sm--api-dashboard ()
-  ;; Services use different fields as id for fetching
   (let* ()
     `(pcase sm--client-type
        ('tumblr
@@ -112,7 +111,6 @@
        )))
 
 (defmacro sm--api-post-details (post)
-  ;; Services use different fields as id for fetching
   (let* ((data post))
     `(pcase sm--client-type
        ('tumblr
@@ -120,6 +118,15 @@
          nil (plist-get ,data :id) nil "1" nil nil "true" "html"))
        ('reddit
 	(tumblesocks-api-post-details-reddit (plist-get ,data :id)))
+       )))
+
+(defmacro sm--render-notes (notes)
+  (let* ((data notes))
+    `(pcase sm--client-type
+       ('tumblr
+	(tumblesocks-view-render-notes ,data))
+       ('reddit
+	(tumblesocks-view-render-notes-reddit ,data))
        )))
 
 (defmacro sm--get-id (post)
@@ -181,7 +188,7 @@
        ('tumblr
 	(json-resolve "response.notes" ,temp t))
        ('reddit
-	(json-resolve "[1].data.children[0]" ,temp t))
+	(json-resolve "[1].data.children" ,temp t))
        )))
 
 
@@ -306,5 +313,17 @@
 		   ('reddit sm--base-url-reddit)
 		   ('twitter sm--base-url-twitter))
 	 args))
+
+;;;###autoload
+(defun sm-tumblr ()
+  (interactive)
+  (let* ((sm--client-type 'tumblr))
+    (tumblesocks-view-dashboard)))
+
+;;;###autoload
+(defun sm-reddit ()
+  (interactive)
+  (let* ((sm--client-type 'reddit))
+    (tumblesocks-view-dashboard)))
 
 (provide 'sm)

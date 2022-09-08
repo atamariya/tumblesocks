@@ -482,6 +482,7 @@ better suited to inserting each post."
 				     (or blogtitle "")))
   (setq buffer-read-only nil)
   (setq buffer-file-coding-system 'latin-1)
+  (fundamental-mode)
   (erase-buffer)
   ;; We must save the current pagination offset;
   ;; tumblesocks-refresh-view is called when we move through pages.
@@ -554,8 +555,7 @@ You can browse around, edit, and delete posts from here.
   (interactive)
   (setq tumblesocks-view-current-offset
 	(if preserve-page-offset tumblesocks-view-current-offset 0))
-  (let* (;(sm--client-type 'reddit)
-	 (dashboard-data (sm--api-dashboard)
+  (let* ((dashboard-data (sm--api-dashboard)
 			 ;; (tumblesocks-api-user-dashboard-reddit
                          ;;  tumblesocks-posts-per-page
                          ;;  tumblesocks-view-current-offset
@@ -616,10 +616,36 @@ You can browse around, edit, and delete posts from here.
         (let ((tumblesocks-desired-image-size 0))
           (sm--render-post post t))
       (sm--render-post post t))
-    (tumblesocks-view-render-notes notes)
+    ;; (tumblesocks-view-render-notes notes)
+    (sm--render-notes notes)
     (tumblesocks-view-finishrender)
     (setq tumblesocks-view-refresh-action
           `(lambda () (tumblesocks-view-post ,post_id)))))
+
+(defun tumblesocks-view-render-notes-reddit (notes)
+  "Render the given notes into the current buffer."
+  (let ((start (point))
+	note author body)
+    (flet ((comment-that ()
+              (put-text-property start (point) 'face font-lock-comment-face)
+              (setq start (point)))
+           (bold-that ()
+              (put-text-property start (point) 'face
+                                 (cons '(:weight bold) font-lock-comment-face))
+              (setq start (point))))
+      (insert "-- Notes:\n")
+      (comment-that)
+      (dotimes (i (length (json-resolve "data" notes t)))
+	(setq note (json-resolve "data" (aref notes i) t)
+	      author (json-resolve "author" note t)
+	      body (json-resolve "body" note t))
+	(when author
+          (insert author ":\n  ")
+          (bold-that)
+          (tumblesocks-view-insert-html-fragment body t)
+          (insert "\n")
+          (comment-that)))
+      )))
 
 (defun tumblesocks-view-render-notes (notes)
   "Render the given notes into the current buffer."
