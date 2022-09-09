@@ -307,6 +307,28 @@
     ;;   (tumblesocks-view-insert-html-fragment caption))
     (insert "\n")))
 
+(defun sm--reply-tree-reddit (notes)
+  (let* (children)
+    (dotimes (i (length (json-resolve "data" notes t)))
+      (setq note (json-resolve "data" (aref notes i) t)
+	    count (json-resolve "count" note t)
+	    author (json-resolve "author" note t)
+	    body (json-resolve "body" note t))
+      (if author
+	(push (apply 'widget-convert 'tree
+		     :name (format "[%s] %s"
+				   (propertize author
+					       'face 'font-lock-comment-face)
+				   body)
+		     (sm--reply-tree-reddit
+		      (json-resolve "replies.data.children" note t)))
+	      children)
+	(push (widget-convert 'tree :name (format "%d more" count))
+	      children)
+	))
+    (nreverse children)
+    ))
+
 (defun tumblesocks-api-url (&rest args)
   (apply 'concat (pcase sm--client-type
 		   ('tumblr sm--base-url-tumblr)

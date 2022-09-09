@@ -482,11 +482,11 @@ better suited to inserting each post."
 				     (or blogtitle "")))
   (setq buffer-read-only nil)
   (setq buffer-file-coding-system 'latin-1)
-  (fundamental-mode)
-  (erase-buffer)
   ;; We must save the current pagination offset;
   ;; tumblesocks-refresh-view is called when we move through pages.
-  (let ((offset tumblesocks-view-current-offset))
+  (let ((offset tumblesocks-view-current-offset)
+	(inhibit-read-only t))
+    (erase-buffer)
     (tumblesocks-view-mode)
     (when preserve-page-offset
       (setq tumblesocks-view-current-offset offset))))
@@ -633,18 +633,33 @@ You can browse around, edit, and delete posts from here.
               (put-text-property start (point) 'face
                                  (cons '(:weight bold) font-lock-comment-face))
               (setq start (point))))
-      (insert "-- Notes:\n")
+      (insert "Comments\n")
       (comment-that)
-      (dotimes (i (length (json-resolve "data" notes t)))
-	(setq note (json-resolve "data" (aref notes i) t)
-	      author (json-resolve "author" note t)
-	      body (json-resolve "body" note t))
-	(when author
-          (insert author ":\n  ")
-          (bold-that)
-          (tumblesocks-view-insert-html-fragment body t)
-          (insert "\n")
-          (comment-that)))
+      (mapcar (lambda (a)
+		(widget-apply a :create))
+	      (sm--reply-tree-reddit
+	       notes))
+      ;; (apply 'widget-create 'tree
+      ;;        :name "Comments"
+      ;; 	     (sm--reply-tree-reddit
+      ;; 	      notes))
+      ;; (dotimes (i (length (json-resolve "data" notes t)))
+      ;; 	(setq note (json-resolve "data" (aref notes i) t)
+      ;; 	      author (json-resolve "author" note t)
+      ;; 	      body (json-resolve "body" note t))
+      ;; 	(when author
+      ;;     ;; (insert author ":\n  ")
+      ;;     ;; (bold-that)
+      ;;     ;; (tumblesocks-view-insert-html-fragment body t)
+      ;;     ;; (insert "\n")
+      ;;     ;; (comment-that)
+      ;; 	  (apply 'widget-create 'tree
+      ;;      :name body (sm--reply-tree-reddit
+      ;; 		       (json-resolve "replies.data.children" note t)))
+      ;; 	  ))
+
+      (use-local-map widget-keymap)
+      (widget-setup)
       )))
 
 (defun tumblesocks-view-render-notes (notes)
