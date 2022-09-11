@@ -31,8 +31,8 @@
 (defconst sm--base-url-reddit "https://www.reddit.com")
 (defconst sm--base-url-tumblr "https://api.tumblr.com/v2")
 
-(defvar sm--client-type 'tumblr)
-(make-variable-buffer-local 'sm--client-type)
+(defvar sm--client-type nil)
+
 (defvar sm--date-format "%A %-e %B")
 
 (defvar sm--post-def-alist
@@ -117,7 +117,7 @@
 	(tumblesocks-api-blog-posts
          nil (plist-get ,data :id) nil "1" nil nil "true" "html"))
        ('reddit
-	(tumblesocks-api-post-details-reddit (plist-get ,data :id)))
+	(tumblesocks-api-post-details-reddit (plist-get ,data :uri)))
        )))
 
 (defmacro sm--render-notes (notes)
@@ -136,7 +136,7 @@
        ('tumblr
 	(gethash "id" ,data))
        ('reddit
-	(gethash "permalink" ,data))
+	(gethash "name" ,data))
        )))
 
 (defmacro sm--get-url (post)
@@ -215,6 +215,7 @@
                         'tumblesocks-post-data
 			`(:title ,title
 				 :id ,(sm--get-id post)
+				 :uri ,post-url
 				 :channel-name ,channel-name
 				 :reblog_key ,reblog_key
 				 :service ,sm--client-type)

@@ -75,25 +75,29 @@ call `tumblesocks-api-reauthenticate' after this."
         (let ((str (buffer-substring (point-min) (point-max))))
           (if (string-match "\\([^:]*\\):\\(.*\\)"
                             (buffer-substring (point-min) (point-max)))
-              (setq tumblesocks-token
-                    (make-oauth-access-token
-                     :consumer-key tumblesocks-consumer-key
-                     :consumer-secret tumblesocks-secret-key
-                     :auth-t (make-oauth-t
-                              :token (match-string 1 str)
-                              :token-secret (match-string 2 str))))))
+	      (push (cons 'tumblr
+			  (make-oauth-access-token
+			   :consumer-key tumblesocks-consumer-key
+			   :consumer-secret tumblesocks-secret-key
+			   :auth-t (make-oauth-t
+				    :token (match-string 1 str)
+				    :token-secret (match-string 2 str))))
+		    tumblesocks-token)))
         (kill-this-buffer)))
-    (unless tumblesocks-token
-      (setq tumblesocks-token (oauth-authorize-app
-                               tumblesocks-consumer-key
-                               tumblesocks-secret-key
-                               "https://www.tumblr.com/oauth/request_token"
-                               "https://www.tumblr.com/oauth/access_token"
-                               "https://www.tumblr.com/oauth/authorize"))
+    (unless (assoc 'tumblr tumblesocks-token)
+      (push (cons 'tumblr
+		  (oauth-authorize-app
+		   tumblesocks-consumer-key
+		   tumblesocks-secret-key
+		   "https://www.tumblr.com/oauth/request_token"
+		   "https://www.tumblr.com/oauth/access_token"
+		   "https://www.tumblr.com/oauth/authorize"))
+	    tumblesocks-token)
       (save-excursion
-        (find-file tumblesocks-token-file)
-        (erase-buffer)
-        (let ((token (oauth-access-token-auth-t tumblesocks-token)))
+        (let ((token (oauth-access-token-auth-t
+		      (cdr (assoc 'tumblr tumblesocks-token)))))
+          (find-file tumblesocks-token-file)
+          (erase-buffer)
           (insert (format "%s:%s\n"
                           (oauth-t-token token)
                           (oauth-t-token-secret token))))
@@ -144,7 +148,7 @@ This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
   (let ((oauth-callback-url tumblesocks-callback-url))
     (with-current-buffer (oauth-url-retrieve
-                          tumblesocks-token
+                          (cdr (assoc 'tumblr tumblesocks-token))
                           (concat url "?api_key=" tumblesocks-consumer-key
                                   (mapconcat
                                    #'(lambda (x)
@@ -174,18 +178,53 @@ using the given POST parameters (params, an alist).
 
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
-  (unless tumblesocks-token (tumblesocks-api-reauthenticate))
+  (unless (assoc 'tumblr tumblesocks-token) (tumblesocks-api-reauthenticate))
   (let ((oauth-callback-url tumblesocks-callback-url))
     (with-current-buffer
         (oauth-post-url
-         tumblesocks-token url
+         (cdr (assoc 'tumblr tumblesocks-token)) url
          (mapcar #'(lambda (x)
                     (cons (format "%s" (car x))
                           (format "%s" (cdr x))))
                  (tumblesocks-plist-to-alist params)))
       (tumblesocks-api-process-response))))
 
-(defun tumblesocks-api-process-response ()
+(defvar tumblesocks-service-conf
+  ;; (service . (client-id secret-key redirect-url))
+  nil
+  )
+
+(defun tumblesocks-api-reddit-post (url params)
+  "Post to an OAuth2-authenticated Reddit API endpoint (url),
+using the given POST parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (let* ((base "https://www.reddit.com/api/v1")
+	 (conf (assoc 'reddit tumblesocks-service-conf))
+	 (tumblesocks-consumer-key (nth 1 conf))
+	 (tumblesocks-secret-key (nth 2 conf))
+	 (tumblesocks-callback-url (nth 3 conf)))
+    (unless (assoc 'reddit tumblesocks-token)
+      (push (cons 'reddit
+		  (oauth2-auth-and-store (concat base "/authorize")
+					 (concat base "/access_token")
+					 "vote,submit"
+					 tumblesocks-consumer-key
+					 tumblesocks-secret-key
+					 tumblesocks-callback-url "nil"))
+	    tumblesocks-token))
+    (oauth2-url-retrieve
+     (cdr (assoc 'reddit tumblesocks-token)) url
+     #'tumblesocks-api-process-response
+     nil "POST"
+     (mapconcat
+      #'(lambda (x)
+          (concat "&" (url-hexify-string (format "%s" (car x)))
+                  "=" (url-hexify-string (format "%s" (cdr x)))))
+      (tumblesocks-plist-to-alist params) ""))))
+
+(defun tumblesocks-api-process-response (&rest _ignored)
   "Process Tumblr's response in the current buffer,
 returning JSON or signaling an error for other requests."
   (decode-coding-region (point-min) (point-max) 'utf-8-dos)
@@ -262,10 +301,18 @@ returning JSON or signaling an error for other requests."
   "Unfollow the given blog URL."
   (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/unfollow")
                                    `(:url ,url)))
+
 (defun tumblesocks-api-user-like (id reblog_key)
   "Like a given post"
-  (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/like")
-                                   `(:id ,id :reblog_key ,reblog_key)))
+  (pcase sm--client-type
+    ('tumblr
+     (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/like")
+                                      `(:id ,id :reblog_key ,reblog_key)))
+    ('reddit
+     (tumblesocks-api-reddit-post "https://oauth.reddit.com/api/vote"
+                                  `(:id ,id :dir 1)))
+    ))
+
 (defun tumblesocks-api-user-unlike (id reblog_key)
   "Unlike a given post"
   (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/unlike")

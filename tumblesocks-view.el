@@ -707,8 +707,9 @@ You can browse around, edit, and delete posts from here.
   "Like the post underneath point. With prefix arg (C-u), unlike it."
   (interactive "P")
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
+	 (sm--client-type (plist-get data :service))
 	 (from-blog (plist-get data :channel-name))
-	 (post_id (format "%d" (plist-get data :id)))
+	 (post_id (format "%s" (plist-get data :id)))
 	 (reblog_key (plist-get data :reblog_key)))
   (when data
     ;; Get the reblog key.
