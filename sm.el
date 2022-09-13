@@ -201,7 +201,7 @@
      ;; (pp channel-name)
      (sm--render-header channel-name author (sm--get-url post) date
 			(if (eq title :null) nil title) num_likes
-			(if (string= liked "true") t)
+			(eq liked t)
 			num_shared shared tags num_comments
 			verbose-header)
      (cond
@@ -309,17 +309,21 @@
     (insert "\n")))
 
 (defun sm--reply-tree-reddit (notes)
-  (let* (children)
+  (let* (children note count author liked body)
     (dotimes (i (length (json-resolve "data" notes t)))
       (setq note (json-resolve "data" (aref notes i) t)
 	    count (json-resolve "count" note t)
 	    author (json-resolve "author" note t)
+	    liked (json-resolve "likes" note t)
 	    body (json-resolve "body" note t))
       (if author
 	(push (apply 'widget-convert 'tree
-		     :name (format "[%s] %s"
+		     :name (format "[%s%s] %s"
 				   (propertize author
 					       'face 'font-lock-comment-face)
+				   (cond ((eq liked :null) "")
+					 ((eq liked :false) "👎")
+					 (t "👍"))
 				   body)
 		     (sm--reply-tree-reddit
 		      (json-resolve "replies.data.children" note t)))

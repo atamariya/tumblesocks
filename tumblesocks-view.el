@@ -175,7 +175,7 @@ This causes Tumblesocks to ignore the setting of
   (interactive)
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
 	 (from-blog (plist-get data :channel-name))
-	 (post_id (format "%d" (plist-get data :id)))
+	 (post_id (format "%s" (plist-get data :id)))
 	 (reblog_key (plist-get data :reblog_key)))
   (when data
     ;; Get the reblog key.
@@ -208,6 +208,7 @@ This causes Tumblesocks to ignore the setting of
   (make-local-variable 'tumblesocks-view-refresh-action)
   (make-local-variable 'tumblesocks-view-current-offset)
   (make-local-variable 'tumblesocks-view-content-start)
+  (make-local-variable 'sm--client-type)
   ;;(visual-line-mode t) ;shr.el takes care of this...
   )
 
@@ -478,18 +479,21 @@ better suited to inserting each post."
 
 (defun tumblesocks-view-prepare-buffer (blogtitle &optional preserve-page-offset)
   "Create a new buffer to begin viewing a blog."
-  (pop-to-buffer-same-window (format "*%s: %s*" sm--client-type
-				     (or blogtitle "")))
-  (setq buffer-read-only nil)
-  (setq buffer-file-coding-system 'latin-1)
   ;; We must save the current pagination offset;
   ;; tumblesocks-refresh-view is called when we move through pages.
   (let ((offset tumblesocks-view-current-offset)
+	(service sm--client-type)
 	(inhibit-read-only t))
-    (erase-buffer)
+    (pop-to-buffer-same-window (format "*%s: %s*" sm--client-type
+				       (or blogtitle "")))
     (tumblesocks-view-mode)
+    (erase-buffer)
+    (setq buffer-read-only nil)
+    (setq buffer-file-coding-system 'latin-1
+	  sm--client-type service)
     (when preserve-page-offset
       (setq tumblesocks-view-current-offset offset))))
+
 (defun tumblesocks-view-finishrender ()
   "Finish creating the blog buffer, ready to present to the user"
   (set-buffer-modified-p nil)
@@ -636,7 +640,8 @@ You can browse around, edit, and delete posts from here.
       (insert "Comments\n")
       (comment-that)
       (mapcar (lambda (a)
-		(widget-apply a :create))
+		(widget-apply a :create)
+		(newline))
 	      (sm--reply-tree-reddit
 	       notes))
       ;; (apply 'widget-create 'tree

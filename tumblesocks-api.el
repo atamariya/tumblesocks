@@ -194,7 +194,23 @@ error if the error code is not in the 200 category."
   nil
   )
 
+(defun tumblesocks-api-reddit-get (url params)
+  "Post to an OAuth2-authenticated Reddit API endpoint (url),
+using the given GET parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (tumblesocks-api-reddit-request url params "GET"))
+
 (defun tumblesocks-api-reddit-post (url params)
+  "Post to an OAuth2-authenticated Reddit API endpoint (url),
+using the given POST parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (tumblesocks-api-reddit-request url params "POST"))
+
+(defun tumblesocks-api-reddit-request (url params method)
   "Post to an OAuth2-authenticated Reddit API endpoint (url),
 using the given POST parameters (params, an alist).
 
@@ -214,15 +230,17 @@ error if the error code is not in the 200 category."
 					 tumblesocks-secret-key
 					 tumblesocks-callback-url "nil"))
 	    tumblesocks-token))
-    (oauth2-url-retrieve
+    (with-current-buffer
+    (oauth2-url-retrieve-synchronously
      (cdr (assoc 'reddit tumblesocks-token)) url
-     #'tumblesocks-api-process-response
-     nil "POST"
+     ;; #'tumblesocks-api-process-response nil
+     method
      (mapconcat
       #'(lambda (x)
           (concat "&" (url-hexify-string (format "%s" (car x)))
                   "=" (url-hexify-string (format "%s" (cdr x)))))
-      (tumblesocks-plist-to-alist params) ""))))
+      (tumblesocks-plist-to-alist params) ""))
+    (tumblesocks-api-process-response))))
 
 (defun tumblesocks-api-process-response (&rest _ignored)
   "Process Tumblr's response in the current buffer,
@@ -315,8 +333,14 @@ returning JSON or signaling an error for other requests."
 
 (defun tumblesocks-api-user-unlike (id reblog_key)
   "Unlike a given post"
-  (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/unlike")
-                                   `(:id ,id :reblog_key ,reblog_key)))
+  (pcase sm--client-type
+    ('tumblr
+     (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/unlike")
+                                      `(:id ,id :reblog_key ,reblog_key)))
+    ('reddit
+     (tumblesocks-api-reddit-post "https://oauth.reddit.com/api/vote"
+                                  `(:id ,id :dir 0)))
+    ))
 
 (defun tumblesocks-api-blog-info ()
   "Gather information about the blog listed in
@@ -453,8 +477,8 @@ If you're making a text post, for example, args should be something like
                (and since_id `(:since_id ,since_id))
                (and reblog_info `(:reblog_info ,reblog_info))
                (and notes_info `(:notes_info ,notes_info)))))
-    ;; (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/dashboard") args)
-    (tumblesocks-api-http-apikey-get "https://www.reddit.com/.json" args)
+    ;; (tumblesocks-api-http-apikey-get "https://www.reddit.com/.json" args)
+    (tumblesocks-api-reddit-get (concat "https://oauth.reddit.com/r/emacs/best") args)
     ))
 
 (defun tumblesocks-api-post-details-reddit (&optional url limit offset type since_id reblog_info notes_info)
@@ -467,6 +491,5 @@ If you're making a text post, for example, args should be something like
                (and since_id `(:since_id ,since_id))
                (and reblog_info `(:reblog_info ,reblog_info))
                (and notes_info `(:notes_info ,notes_info)))))
-    ;; (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/dashboard") args)
-    (tumblesocks-api-http-apikey-get (concat "https://www.reddit.com" url ".json") args)
+    (tumblesocks-api-reddit-get (concat "https://oauth.reddit.com" url ".json") args)
     ))
