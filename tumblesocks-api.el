@@ -2,6 +2,7 @@
 ;; Copyright (C) 2012 gcr
 
 (require 'oauth)
+(require 'oauth2)
 (require 'json)
 (provide 'tumblesocks-api)
 
@@ -217,29 +218,39 @@ using the given POST parameters (params, an alist).
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
   (let* ((base "https://www.reddit.com/api/v1")
+	 (auth-scope "read,vote,submit")
 	 (conf (assoc 'reddit tumblesocks-service-conf))
 	 (tumblesocks-consumer-key (nth 1 conf))
 	 (tumblesocks-secret-key (nth 2 conf))
-	 (tumblesocks-callback-url (nth 3 conf)))
+	 (tumblesocks-callback-url (nth 3 conf))
+	 (data (mapconcat
+		#'(lambda (x)
+		    (and (cdr x)
+			 (concat "&" (url-hexify-string (format "%s" (car x)))
+				 "=" (url-hexify-string (format "%s" (cdr x))))))
+		(tumblesocks-plist-to-alist params) "")))
     (unless (assoc 'reddit tumblesocks-token)
       (push (cons 'reddit
-		  (oauth2-auth-and-store (concat base "/authorize")
-					 (concat base "/access_token")
-					 "vote,submit"
-					 tumblesocks-consumer-key
-					 tumblesocks-secret-key
-					 tumblesocks-callback-url "nil"))
+		  (oauth2-auth (concat base "/authorize")
+			       (concat base "/access_token")
+			       tumblesocks-consumer-key tumblesocks-secret-key
+			       auth-scope "nil" tumblesocks-callback-url)
+		  ;; (oauth2-auth-and-store (concat base "/authorize")
+		  ;; 			 (concat base "/access_token")
+		  ;; 			 auth-scope
+		  ;; 			 tumblesocks-consumer-key
+		  ;; 			 tumblesocks-secret-key
+		  ;; 			 tumblesocks-callback-url "nil")
+		  )
 	    tumblesocks-token))
+    (if (string= method "GET")
+	(setq url (concat url "?" data)))
     (with-current-buffer
     (oauth2-url-retrieve-synchronously
      (cdr (assoc 'reddit tumblesocks-token)) url
      ;; #'tumblesocks-api-process-response nil
      method
-     (mapconcat
-      #'(lambda (x)
-          (concat "&" (url-hexify-string (format "%s" (car x)))
-                  "=" (url-hexify-string (format "%s" (cdr x)))))
-      (tumblesocks-plist-to-alist params) ""))
+     data)
     (tumblesocks-api-process-response))))
 
 (defun tumblesocks-api-process-response (&rest _ignored)
@@ -472,11 +483,13 @@ If you're making a text post, for example, args should be something like
   "Gather information about the logged in user's dashboard"
   (let ((args (append
                (and limit `(:limit ,limit))
-               (and offset `(:offset ,offset))
-               (and type `(:offset ,type))
-               (and since_id `(:since_id ,since_id))
-               (and reblog_info `(:reblog_info ,reblog_info))
-               (and notes_info `(:notes_info ,notes_info)))))
+               (and offset `(,sm--reddit-direction ,(plist-get sm--reddit-offset
+							       sm--reddit-direction)))
+               ;; (and type `(:offset ,type))
+               ;; (and since_id `(:since_id ,since_id))
+               ;; (and reblog_info `(:reblog_info ,reblog_info))
+               ;; (and notes_info `(:notes_info ,notes_info))
+	       )))
     ;; (tumblesocks-api-http-apikey-get "https://www.reddit.com/.json" args)
     (tumblesocks-api-reddit-get (concat "https://oauth.reddit.com/r/emacs/best") args)
     ))

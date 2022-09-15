@@ -150,6 +150,8 @@
 		(gethash "permalink" ,data)))
        )))
 
+(defvar sm--reddit-offset nil)
+(defvar sm--reddit-direction nil)
 (defmacro sm--get-list (data)
   ;; Fetch post list from response
   (let* ((temp data))
@@ -157,6 +159,11 @@
        ('tumblr
 	(json-resolve "response.posts" ,temp t))
        ('reddit
+	(let ((before (json-resolve "data.before" ,temp t))
+	      (after (json-resolve "data.after" ,temp t)))
+	  (setq sm--reddit-offset
+	      (list :before (if (eq before :null) nil before)
+		    :after  (if (eq after :null) nil after))))
 	(json-resolve "data.children" ,temp t))
        )))
 

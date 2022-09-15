@@ -263,6 +263,7 @@ We show `tumblesocks-posts-per-page' posts per page."
         (max
          (- tumblesocks-view-current-offset tumblesocks-posts-per-page)
          0))
+  (setq sm--reddit-direction :before)
   (tumblesocks-view-refresh)
   (goto-char (point-max))
   (previous-line)
@@ -276,6 +277,7 @@ We show `tumblesocks-posts-per-page' posts per page."
   (interactive)
   (setq tumblesocks-view-current-offset
         (+ tumblesocks-view-current-offset tumblesocks-posts-per-page))
+  (setq sm--reddit-direction :after)
   (tumblesocks-view-refresh))
 
 (defun tumblesocks-goto-page (page)
