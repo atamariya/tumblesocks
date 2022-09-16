@@ -27,13 +27,15 @@
 ;; Comments: Notes (Tumblr)
 ;; Note_count: likes + reblogs (Tumblr), votes (Reddit)
 
+(require 'parse-time)
+
 (defconst sm--base-url-twitter "https://www.twitter.com")
 (defconst sm--base-url-reddit "https://www.reddit.com")
 (defconst sm--base-url-tumblr "https://api.tumblr.com/v2")
 
 (defvar sm--client-type nil)
 
-(defvar sm--date-format "%A %-e %B")
+(defvar sm--date-format "%a %-e %b %Y")
 
 (defvar sm--post-def-alist
   '((vars    . (channel-name author post-url type date title body num_likes liked
@@ -43,9 +45,10 @@
 			  note_count timestamp))
     (reddit  . (subreddit author permalink type date title selftext score likes
 			  note_count shared notes tags reblog_key
-			  created num_comments))
-    (twitter . (sub_name post-url type date title body likes liked
-			 note_count shared notes tags)))
+			  created num_comments url url_overridden_by_dest))
+    (twitter . (user.screen_name user.screen_name urls type created_at title text
+			 favorite_count favorited retweet_count retweeted notes
+			 entities.hashtags reblog_key)))
   ;; "An alist of variable name and JSON key mapping."
   )
 
@@ -71,7 +74,7 @@
 			      `(gethash ,(symbol-name v) ,temp)))
 			 (cdr (assoc 'tumblr sm--post-def-alist))))
 	     (date (format-time-string sm--date-format
-				       (decode-time timestamp)))
+				       timestamp))
 	     (num_comments note_count))
 	  . ,temp1))
        ('reddit
@@ -90,7 +93,27 @@
 	     (type (if (eq (gethash "is_video" ,temp) t)
 		       "video" "text" ))
 	     (date (format-time-string sm--date-format
-				       (decode-time created))))
+				       created)))
+	  . ,temp1))
+       ('twitter
+	;; (message "12 %s a" sm--client-type)
+	(let*
+	    (;(,temp post)
+	     ,@(progn
+		 (setq i -1)
+		 (mapcar #'(lambda (v)
+			     (setq i (1+ i))
+			     ;; (message "%s" i)
+			     (list
+			      (if (< i n) (nth i vars) v)
+			      `(json-resolve ,(symbol-name v) ,temp t)))
+			 (cdr (assoc 'twitter sm--post-def-alist))))
+	     (type "text")
+	     (num_comments 0)
+	     (date (format-time-string sm--date-format
+				       (encode-time
+					(parse-time-string date))))
+	     )
 	  . ,temp1))
        (_ (let* ((channel-name "default")) . ,temp1))
        )))
@@ -108,6 +131,11 @@
          tumblesocks-posts-per-page
          tumblesocks-view-current-offset
 	 nil nil nil nil))
+       ('twitter
+	(tumblesocks-api-user-dashboard-twitter
+         tumblesocks-posts-per-page
+         tumblesocks-view-current-offset
+	 nil nil nil nil))
        )))
 
 (defmacro sm--api-post-details (post)
@@ -118,6 +146,8 @@
          nil (plist-get ,data :id) nil "1" nil nil "true" "html"))
        ('reddit
 	(tumblesocks-api-post-details-reddit (plist-get ,data :uri)))
+       ('twitter
+	(tumblesocks-api-post-details-twitter (plist-get ,data :id)))
        )))
 
 (defmacro sm--render-notes (notes)
@@ -133,7 +163,7 @@
   ;; Services use different fields as id for fetching
   (let* ((data post))
     `(pcase sm--client-type
-       ('tumblr
+       ((or 'tumblr 'twitter)
 	(gethash "id" ,data))
        ('reddit
 	(gethash "name" ,data))
@@ -148,6 +178,8 @@
        ('reddit
 	(concat sm--base-url-reddit
 		(gethash "permalink" ,data)))
+       ('twitter
+	post-url)
        )))
 
 (defvar sm--reddit-offset nil)
@@ -165,6 +197,7 @@
 	      (list :before (if (eq before :null) nil before)
 		    :after  (if (eq after :null) nil after))))
 	(json-resolve "data.children" ,temp t))
+       (_ ,temp)
        )))
 
 (defmacro sm--get-post-from-list (data i)
@@ -172,7 +205,7 @@
   (let* ((temp data)
 	 (temp1 i))
     `(pcase sm--client-type
-       ('tumblr
+       ((or 'tumblr 'twitter)
 	(aref ,temp ,temp1))
        ('reddit
 	(gethash "data" (aref ,temp ,temp1)))
@@ -213,8 +246,19 @@
 			verbose-header)
      (cond
       ((null body) nil)
-      ((string= type "text") (sm--insert-text body))
-      ;; ((string= type "photo") (sm--insert-photo photos))
+      ((string= type "text")
+       (sm--insert-text body)
+       (if (and (boundp 'url)
+		(not (string-empty-p url))
+		url_overridden_by_dest)
+	   ;; reddit photo
+	   (tumblesocks-view-insert-parsed-html-fragment
+	    `(p nil
+		(img ((src . ,url)))))
+	 ;; (tumblesocks-view-insert-parsed-html-fragment
+	 ;;  `(a ((href . ,url)) ,url) t)
+	 ))
+      ((string= type "photo") (sm--insert-photo photos))
       (t (insert type)))
      (insert "\n")
      ;; Record this post data so we know how to read it next
@@ -230,6 +274,11 @@
 			))
     ))
 
+(defun sm--format-num (n)
+  (cond ((> n 1000000) (format "%dM" (/ n 1000000)))
+	((> n 1000)    (format "%dK" (/ n 1000)))
+	(t (format "%d" n))))
+
 (defun sm--render-header (channel-name _author post-url date title likes liked
 				       note_count shared tags num_comments
 				       &optional verbose)
@@ -243,9 +292,9 @@
     ;;   (insert " (" (format "%d" note_count) " vote"
     ;;           (if (= 1 note_count) "" "s") ")"))
 
-    (insert (format " %s %-5d" (if liked "❤️" "🤍") likes))
+    (insert (format " %s %s" (if liked "❤️" "🤍") (sm--format-num likes)))
     ;; (insert "👎 👍 🔁")
-    (insert (format "\t💬 %-3d" num_comments) " comments")
+    (insert (format "\t💬 %3s" (sm--format-num num_comments)) " comments")
 
     (unless verbose
       (insert "\t" date))
@@ -358,6 +407,12 @@
 (defun sm-reddit ()
   (interactive)
   (let* ((sm--client-type 'reddit))
+    (tumblesocks-view-dashboard)))
+
+;;;###autoload
+(defun sm-twitter ()
+  (interactive)
+  (let* ((sm--client-type 'twitter))
     (tumblesocks-view-dashboard)))
 
 (provide 'sm)

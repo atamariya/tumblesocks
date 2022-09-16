@@ -609,7 +609,7 @@ You can browse around, edit, and delete posts from here.
   "View a post in its own dedicated buffer, with notes"
   (interactive "sPost ID: ")
   (unless (stringp post_id)
-    (setq post_id (format "%d" post_id)))
+    (setq post_id (format "%s" post_id)))
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
 	 (blog (sm--api-post-details data))
          (post (sm--get-post-from-details blog))
