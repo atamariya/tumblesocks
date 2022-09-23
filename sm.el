@@ -244,22 +244,34 @@
 			(eq liked t)
 			num_shared shared tags num_comments
 			verbose-header)
-     (cond
-      ((null body) nil)
-      ((string= type "text")
-       (sm--insert-text body)
-       (if (and (boundp 'url)
-		(not (string-empty-p url))
-		url_overridden_by_dest)
-	   ;; reddit photo
-	   (tumblesocks-view-insert-parsed-html-fragment
-	    `(p nil
-		(img ((src . ,url)))))
-	 ;; (tumblesocks-view-insert-parsed-html-fragment
-	 ;;  `(a ((href . ,url)) ,url) t)
-	 ))
-      ((string= type "photo") (sm--insert-photo photos))
-      (t (insert type)))
+     (sm--render-body type body post)
+     (if (and
+	  (boundp 'url)
+	  (not (string-empty-p url))
+	  url_overridden_by_dest)
+	 ;; reddit photo
+ 	 (sm--render-body (if (member (file-name-extension url) '("png" "jpg"))
+			      "photo" "url")
+			  url))
+     ;; (cond
+     ;;  ;; ((null body) nil)
+     ;;  ((string= type "text")
+     ;;   (if body
+     ;;   (sm--insert-text body))
+     ;;   (if (and (boundp 'url)
+     ;; 		(not (string-empty-p url))
+     ;; 		url_overridden_by_dest)
+     ;; 	   ;; reddit photo
+     ;; 	   (tumblesocks-view-insert-parsed-html-fragment
+     ;; 	    `(p nil
+     ;; 		(img ((src . ,url)))))
+     ;; 	 ;; (tumblesocks-view-insert-parsed-html-fragment
+     ;; 	 ;;  `(a ((href . ,url)) ,url) t)
+     ;; 	 ))
+     ;;  ((string= type "photo") (sm--insert-photo photos))
+     ;;  ((string= type "blocks")
+     ;;   (sm--insert-photo (json-resolve "trail[0].content" post t)))
+     ;;  (t (insert type)))
      (insert "\n")
      ;; Record this post data so we know how to read it next
      (put-text-property begin-post-area (point)
@@ -273,6 +285,35 @@
                         ;; post
 			))
     ))
+
+(defun sm--render-body (type body &optional post)
+  ""
+  (cond
+   ((string= type "text")
+    (if body
+	(sm--insert-text body)))
+   ((string= type "photo")
+    ;; Pic with a url
+    (tumblesocks-view-insert-parsed-html-fragment
+	  `(p nil (img ((src . ,body))))))
+   ((string= type "image")
+    ;; List of pics with alternate sizes - display one
+    (sm--insert-photo post))
+   ((string= type "url")
+    (newline)
+    (tumblesocks-view-insert-parsed-html-fragment
+     `(a ((href . ,body)) ,body) t)
+        (newline))
+   ((string= type "blocks")
+    ;; Tumblr NPF blocks
+    (cl-mapc
+     (lambda (a)
+       (sm--render-body (json-resolve "type" a t)
+			(json-resolve "text" a t)
+			(json-resolve "media" a t)))
+     (json-resolve "trail[0].content" post t)))
+   (t (insert type)))
+  )
 
 (defun sm--format-num (n)
   (cond ((> n 1000000) (format "%dM" (/ n 1000000)))
@@ -339,26 +380,42 @@
 (defun sm--insert-photo (photos)
   (let ((photo-html-frag
          `(p () .
-             ,(apply 'append
-                     (mapcar
-                      #'(lambda (photodata)
-                         ;; There could be several photos here, and
-                         ;; each photo has several alternative sizes.
-                         ;; The first is usually the biggest, the
-                         ;; third is a good compromise
-                         (let* ((alts (plist-get photodata :alt_sizes))
-                                (desired-size-alts
-                                 (delq nil
-                                  (mapcar #'(lambda(alt)
-                                             (and (= (plist-get alt :width)
-                                                     tumblesocks-desired-image-size)
-                                                  alt))
-                                          alts)))
-                                (alt (car (or desired-size-alts alts))))
-                           (list `(img ((src . ,(plist-get alt :url))))
-                                 ;;`(br)
-                                 (plist-get photodata :caption))))
-                      photos)))))
+	     ,(let* ((alts photos)
+                     (desired-size-alts
+                      (delq nil
+                            (cl-mapcar #'(lambda(alt)
+                                           (and (= (gethash "width" alt)
+                                                   tumblesocks-desired-image-size)
+                                                alt))
+                                       alts)))
+                     (alt (or (car desired-size-alts)
+			      (aref alts 0))))
+                (list `(img ((src . ,(gethash "url" alt))))
+		      ))
+
+             ;; ,(apply 'append
+             ;;         (mapcar
+             ;;          #'(lambda (photodata)
+             ;;             ;; There could be several photos here, and
+             ;;             ;; each photo has several alternative sizes.
+             ;;             ;; The first is usually the biggest, the
+             ;;              ;; third is a good compromise
+	     ;; 		  (message "%s" (json-serialize photodata))
+             ;;             (let* ((alts photos)
+             ;;                    (desired-size-alts
+             ;;                     (delq nil
+             ;;                      (cl-mapcar #'(lambda(alt)
+             ;;                                 (and (= (gethash "width" alt)
+             ;;                                         tumblesocks-desired-image-size)
+             ;;                                      alt))
+             ;;                              alts)))
+             ;;                    (alt (or (car desired-size-alts)
+	     ;; 				 (aref alts 0))))
+             ;;               (list `(img ((src . ,(gethash "url" alt))))
+             ;;                     ;;`(br)
+             ;;                     (gethash "caption" photodata))))
+             ;;          photos))
+	     )))
     (tumblesocks-view-insert-parsed-html-fragment photo-html-frag)
     ;; (when caption
     ;;   (tumblesocks-view-insert-html-fragment caption))
@@ -406,7 +463,8 @@
 ;;;###autoload
 (defun sm-reddit ()
   (interactive)
-  (let* ((sm--client-type 'reddit))
+  (let* ((sm--client-type 'reddit)
+	 (tumblesocks-blog nil))
     (tumblesocks-view-dashboard)))
 
 ;;;###autoload

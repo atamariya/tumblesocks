@@ -208,6 +208,7 @@ This causes Tumblesocks to ignore the setting of
   (make-local-variable 'tumblesocks-view-refresh-action)
   (make-local-variable 'tumblesocks-view-current-offset)
   (make-local-variable 'tumblesocks-view-content-start)
+  (make-local-variable 'tumblesocks-blog)
   (make-local-variable 'sm--client-type)
   ;;(visual-line-mode t) ;shr.el takes care of this...
   )
@@ -485,6 +486,7 @@ better suited to inserting each post."
   ;; tumblesocks-refresh-view is called when we move through pages.
   (let ((offset tumblesocks-view-current-offset)
 	(service sm--client-type)
+	(blog tumblesocks-blog)
 	(inhibit-read-only t))
     (pop-to-buffer-same-window (format "*%s: %s*" sm--client-type
 				       (or blogtitle "")))
@@ -492,6 +494,7 @@ better suited to inserting each post."
     (erase-buffer)
     (setq buffer-read-only nil)
     (setq buffer-file-coding-system 'latin-1
+	  tumblesocks-blog blog
 	  sm--client-type service)
     (when preserve-page-offset
       (setq tumblesocks-view-current-offset offset))))
@@ -515,38 +518,41 @@ better suited to inserting each post."
           ;;   "")
 	  (tumblesocks-view--dwim-at-point)
 	  )))
-  (let* ((tumblesocks-blog blogname) ; dynamic binding the blog!
-         ;; (blog-info (plist-get (tumblesocks-api-blog-info) :blog))
-         (returned-data (tumblesocks-api-blog-posts
-                         nil nil nil tumblesocks-posts-per-page
-                         tumblesocks-view-current-offset nil nil "html"))
-	 (blog-info (plist-get returned-data :blog))
-	 (title (decode-coding-string
-		 (string-make-unibyte (plist-get blog-info :title)) 'utf-8)))
-    (tumblesocks-view-prepare-buffer
-     title
-     preserve-page-offset)
-    ;; Draw blog info
-    (let ((begin (point)))
-      (tumblesocks-view-insert-parsed-html-fragment
-       `(img ((src . ,(tumblesocks-api-avatar-url)))) t)
-      (insert title " - "
-              (plist-get blog-info :url))
-      (insert (format "\n%d post%s"
-                      (plist-get blog-info :posts)
-                      (if (= 1 (plist-get blog-info :posts)) "" "s")))
-      (when (plist-get blog-info :likes)
-        (insert (format ", %d like%s"
-                        (plist-get blog-info :likes)
-                        (if (= 1 (plist-get blog-info :likes)) "" "s"))))
-      (insert "\n\n")
-      (put-text-property begin (point) 'face font-lock-comment-face))
-    (tumblesocks-view-render-blogdata
-     (plist-get returned-data :posts)
-     (plist-get returned-data :total_posts))
-    (tumblesocks-view-finishrender)
-    (setq tumblesocks-view-refresh-action
-          `(lambda () (tumblesocks-view-blog ,blogname t))))) ; <-- CLOSURE HACK :p
+  (let* ((tumblesocks-blog blogname)) ; dynamic binding the blog!
+    (tumblesocks-view-dashboard)))
+  ;; (let* ((tumblesocks-blog blogname) ; dynamic binding the blog!
+  ;;        ;; (blog-info (plist-get (tumblesocks-api-blog-info) :blog))
+  ;;        (data (tumblesocks-api-blog-posts
+  ;;                        nil nil nil tumblesocks-posts-per-page
+  ;;                        tumblesocks-view-current-offset nil nil "html"))
+  ;; 	 (returned-data (gethash "response" data))
+  ;; 	 (blog-info (gethash "blog" returned-data))
+  ;; 	 (title (decode-coding-string
+  ;; 		     (string-make-unibyte (gethash "title" blog-info)) 'utf-8)))
+  ;;   (tumblesocks-view-prepare-buffer
+  ;;    title
+  ;;    preserve-page-offset)
+  ;;   ;; Draw blog info
+  ;;   ;; (let ((begin (point)))
+  ;;   ;;   (tumblesocks-view-insert-parsed-html-fragment
+  ;;   ;;    `(img ((src . ,(tumblesocks-api-avatar-url)))) t)
+  ;;   ;;   (insert title " - "
+  ;;   ;;           (plist-get blog-info :url))
+  ;;   ;;   (insert (format "\n%d post%s"
+  ;;   ;;                   (plist-get blog-info :posts)
+  ;;   ;;                   (if (= 1 (plist-get blog-info :posts)) "" "s")))
+  ;;   ;;   (when (plist-get blog-info :likes)
+  ;;   ;;     (insert (format ", %d like%s"
+  ;;   ;;                     (plist-get blog-info :likes)
+  ;;   ;;                     (if (= 1 (plist-get blog-info :likes)) "" "s"))))
+  ;;   ;;   (insert "\n\n")
+  ;;   ;;   (put-text-property begin (point) 'face font-lock-comment-face))
+  ;;   (tumblesocks-view-render-blogdata
+  ;;    (gethash "posts" returned-data)
+  ;;    (gethash "total_posts" returned-data))
+  ;;   (tumblesocks-view-finishrender)
+  ;;   (setq tumblesocks-view-refresh-action
+  ;;         `(lambda () (tumblesocks-view-blog ,blogname t))))) ; <-- CLOSURE HACK :p
 
 ;;;###autoload
 (defalias 'tumblesocks 'tumblesocks-view-dashboard)
@@ -567,7 +573,8 @@ You can browse around, edit, and delete posts from here.
                          ;;  tumblesocks-view-current-offset
 			 ;;  nil nil nil nil)
 			 ))
-    (tumblesocks-view-prepare-buffer "Dashboard" preserve-page-offset)
+    (tumblesocks-view-prepare-buffer (or tumblesocks-blog "Dashboard")
+				     preserve-page-offset)
     ;; (let ((begin (point)))
       ;; (insert "Dashboard")
       ;; (center-line)
@@ -639,6 +646,7 @@ You can browse around, edit, and delete posts from here.
               (put-text-property start (point) 'face
                                  (cons '(:weight bold) font-lock-comment-face))
               (setq start (point))))
+      (when (> (length notes) 0)
       (insert "Comments\n")
       (comment-that)
       (mapcar (lambda (a)
@@ -665,9 +673,10 @@ You can browse around, edit, and delete posts from here.
       ;; 		       (json-resolve "replies.data.children" note t)))
       ;; 	  ))
 
-      (use-local-map widget-keymap)
+      (put-text-property start (point) 'keymap widget-keymap)
+      ;; (use-local-map widget-keymap)
       (widget-setup)
-      )))
+      ))))
 
 (defun tumblesocks-view-render-notes (notes)
   "Render the given notes into the current buffer."
@@ -744,7 +753,8 @@ You can browse around, edit, and delete posts from here.
 	 ((get-text-property (point) 'tumblesocks-tag))
 	 ((and (get-text-property (point) 'tumblesocks-post-data)
 	       (symbol-at-point))
-          (symbol-name (symbol-at-point)))))
+          (substring-no-properties (symbol-name (symbol-at-point)))
+	  )))
 
 (defun tumblesocks-view-posts-tagged (tag)
   "Search for posts with the given tag."

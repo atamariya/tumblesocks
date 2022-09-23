@@ -148,6 +148,7 @@ using the given POST parameters (params, a keyword plist).
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
   (let ((oauth-callback-url tumblesocks-callback-url))
+    (unless (assoc 'tumblr tumblesocks-token) (tumblesocks-api-reauthenticate))
     (with-current-buffer (oauth-url-retrieve
                           (cdr (assoc 'tumblr tumblesocks-token))
                           (concat url "?api_key=" tumblesocks-consumer-key
@@ -357,7 +358,14 @@ returning JSON or signaling an error for other requests."
                (and since_id `(:since_id ,since_id))
                (and reblog_info `(:reblog_info ,reblog_info))
                (and notes_info `(:notes_info ,notes_info)))))
-    (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/dashboard") args)))
+    ;; (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/dashboard") args)
+    (tumblesocks-api-http-oauth-get
+     (tumblesocks-api-url "/blog/"
+                          tumblesocks-blog
+                          "/posts"
+                          (if type (concat "/" type) ""))
+     args)
+    ))
 
 (defun tumblesocks-api-user-likes (&optional limit offset)
   "Gather information about the logged in user's likes"
@@ -541,15 +549,21 @@ If you're making a text post, for example, args should be something like
   "Gather information about the logged in user's dashboard"
   (let ((args (append
                (and limit `(:limit ,limit))
-               (and offset `(,sm--reddit-direction ,(plist-get sm--reddit-offset
-							       sm--reddit-direction)))
+               (and (/= 0 offset)
+		    `(,sm--reddit-direction ,(plist-get sm--reddit-offset
+							sm--reddit-direction)))
                ;; (and type `(:offset ,type))
                ;; (and since_id `(:since_id ,since_id))
                ;; (and reblog_info `(:reblog_info ,reblog_info))
                ;; (and notes_info `(:notes_info ,notes_info))
 	       )))
     ;; (tumblesocks-api-http-apikey-get "https://www.reddit.com/.json" args)
-    (tumblesocks-api-reddit-get (concat "https://oauth.reddit.com/r/emacs/best") args)
+    (tumblesocks-api-reddit-get (concat "https://oauth.reddit.com/"
+					(if tumblesocks-blog
+					    (format "r/%s/" tumblesocks-blog))
+					;; "r/emacs/"
+					"best")
+				args)
     ))
 
 (defun tumblesocks-api-post-details-reddit (&optional url limit offset type since_id reblog_info notes_info)
