@@ -276,8 +276,8 @@ using the given POST parameters (params, an alist).
 
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
-  (let* ((base "https://api.twitter.com/oauth")
-	 (auth-scope "read,vote,submit")
+  (let* ((base "https://api.twitter.com/2/oauth2")
+	 (auth-scope "tweet.read%20users.read%20follows.read%20follows.write")
 	 (conf (assoc 'twitter tumblesocks-service-conf))
 	 (tumblesocks-consumer-key (nth 1 conf))
 	 (tumblesocks-secret-key (nth 2 conf))
@@ -290,20 +290,24 @@ error if the error code is not in the 200 category."
 		(tumblesocks-plist-to-alist params) "")))
     (unless (assoc 'twitter tumblesocks-token)
       (push (cons 'twitter
-		  (oauth-authorize-app
+		  (oauth2-auth
+		   "https://twitter.com/i/oauth2/authorize"
+		   (concat base "/token")
 		   tumblesocks-consumer-key
 		   tumblesocks-secret-key
-		   (concat base "/request_token")
-		   (concat base "/access_token")
-		   (concat base "/authorize"))
+		   "tweet.read users.read tweet.write offline.access"
+		   "nil"
+		   "https://www.example.com")
 		  )
 	    tumblesocks-token))
+    (if (string= method "GET")
+	(setq url (concat url
+			  "?tweet.fields=created_at,public_metrics"
+			  "&expansions=author_id"
+			  data)))
     (with-current-buffer
-	(if (string= method "GET")
-	    (oauth-fetch-url
-	     (cdr (assoc 'twitter tumblesocks-token)) url)
-	  (oauth-post-url
-	   (cdr (assoc 'twitter tumblesocks-token)) url params))
+	(oauth2-url-retrieve-synchronously
+	 (cdr (assoc 'twitter tumblesocks-token)) url method data)
       (tumblesocks-api-process-response))))
 
 (defun tumblesocks-api-process-response (&rest _ignored)
@@ -582,7 +586,7 @@ If you're making a text post, for example, args should be something like
 (defun tumblesocks-api-user-dashboard-twitter (&optional limit offset type since_id reblog_info notes_info)
   "Gather information about the logged in user's dashboard"
   (let ((args (append
-               (and limit `(:limit ,limit))
+               ;; (and limit `(:limit ,limit))
                (and offset `(,sm--reddit-direction ,(plist-get sm--reddit-offset
 							       sm--reddit-direction)))
                ;; (and type `(:offset ,type))
@@ -590,19 +594,22 @@ If you're making a text post, for example, args should be something like
                ;; (and reblog_info `(:reblog_info ,reblog_info))
                ;; (and notes_info `(:notes_info ,notes_info))
 	       )))
-    (tumblesocks-api-twitter-get "https://api.twitter.com/1.1/statuses/user_timeline.json" args)
+    (tumblesocks-api-twitter-get
+     "https://api.twitter.com/2/users/3236721175/timelines/reverse_chronological"
+     args)
     ))
 
 (defun tumblesocks-api-post-details-twitter (&optional url limit offset type since_id reblog_info notes_info)
   "Gather information about the logged in user's dashboard"
   ;; (unless tumblesocks-blog (error "Which blog? Please set `tumblesocks-blog'"))
   (let ((args (append
-	       `(:id ,url)
-               (and limit `(:limit ,limit))
-               (and offset `(:offset ,offset))
-               (and type `(:offset ,type))
-               (and since_id `(:since_id ,since_id))
-               (and reblog_info `(:reblog_info ,reblog_info))
-               (and notes_info `(:notes_info ,notes_info)))))
-    (tumblesocks-api-twitter-get "https://api.twitter.com/1.1/statuses/show.json" args)
+	       `(:ids ,url)
+               ;; (and limit `(:limit ,limit))
+               ;; (and offset `(:offset ,offset))
+               ;; (and type `(:offset ,type))
+               ;; (and since_id `(:since_id ,since_id))
+               ;; (and reblog_info `(:reblog_info ,reblog_info))
+               ;; (and notes_info `(:notes_info ,notes_info))
+	      )))
+    (tumblesocks-api-twitter-get "https://api.twitter.com/2/tweets" args)
     ))

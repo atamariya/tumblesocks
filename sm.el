@@ -46,9 +46,10 @@
     (reddit  . (subreddit author permalink type date title selftext score likes
 			  note_count shared notes tags reblog_key
 			  created num_comments url url_overridden_by_dest))
-    (twitter . (user.screen_name user.screen_name urls type created_at title text
-			 favorite_count favorited retweet_count retweeted notes
-			 entities.hashtags reblog_key)))
+    (twitter . (user.screen_name author_id urls type created_at title text
+				 public_metrics.like_count favorited
+				 public_metrics.retweet_count retweeted notes
+				 entities.hashtags reblog_key)))
   ;; "An alist of variable name and JSON key mapping."
   )
 
@@ -109,7 +110,7 @@
 			      `(json-resolve ,(symbol-name v) ,temp t)))
 			 (cdr (assoc 'twitter sm--post-def-alist))))
 	     (type "text")
-	     (num_comments 0)
+	     (num_comments (json-resolve "public_metrics.reply_count" post t))
 	     (date (format-time-string sm--date-format
 				       (encode-time
 					(parse-time-string date))))
@@ -197,6 +198,8 @@
 	      (list :before (if (eq before :null) nil before)
 		    :after  (if (eq after :null) nil after))))
 	(json-resolve "data.children" ,temp t))
+       ('twitter
+	(json-resolve "data" ,temp t))
        (_ ,temp)
        )))
 
@@ -431,12 +434,12 @@
 	    body (json-resolve "body" note t))
       (if author
 	(push (apply 'widget-convert 'tree
-		     :name (format "[%s%s] %s"
+		     :name (format "[%s %s] %s"
 				   (propertize author
 					       'face 'font-lock-comment-face)
 				   (cond ((eq liked :null) "")
-					 ((eq liked :false) "👎")
-					 (t "👍"))
+					 ((eq liked :false) " 👎")
+					 (t " 👍"))
 				   body)
 		     (sm--reply-tree-reddit
 		      (json-resolve "replies.data.children" note t)))
