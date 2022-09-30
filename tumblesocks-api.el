@@ -224,18 +224,14 @@ error if the error code is not in the 200 category."
   (tumblesocks-api-oauth2-request url params method
 				  'tumblr "write offline_access"))
 
-(defun tumblesocks-api-oauth2-request (url params method service auth-scope)
+(defun tumblesocks-api-oauth2-request (url params method service auth-scope
+					   &optional headers)
   (let* ((oauth2-conf (assoc service oauth2-service-conf))
 	 (conf (assoc service tumblesocks-service-conf))
 	 (tumblesocks-consumer-key (nth 1 conf))
 	 (tumblesocks-secret-key (nth 2 conf))
 	 (tumblesocks-callback-url (nth 3 conf))
-	 (data (mapconcat
-		#'(lambda (x)
-		    (and (cdr x)
-			 (concat "&" (url-hexify-string (format "%s" (car x)))
-				 "=" (url-hexify-string (format "%s" (cdr x))))))
-		(tumblesocks-plist-to-alist params) "")))
+	 (data nil))
     (unless (assoc service tumblesocks-token)
       (push (cons service
 		  (oauth2-auth (nth 1 oauth2-conf)
@@ -244,13 +240,22 @@ error if the error code is not in the 200 category."
 			       auth-scope "nil" tumblesocks-callback-url)
 		  )
 	    tumblesocks-token))
+    (setq data (if headers
+		   ;; Use content type as is
+		   params
+		 (mapconcat
+		  #'(lambda (x)
+		      (and (cdr x)
+			   (concat "&" (url-hexify-string (format "%s" (car x)))
+				   "=" (url-hexify-string (format "%s" (cdr x))))))
+		  (tumblesocks-plist-to-alist params) "")))
     (if (string= method "GET")
 	(setq url (concat url "?" data)))
     (with-current-buffer
 	(oauth2-url-retrieve-synchronously
 	 (cdr (assoc service tumblesocks-token))
-	 url method data)
-      (tumblesocks-api-process-response))))
+	 url method data headers)
+      (tumblesocks-api-process-response service))))
 
 (defun tumblesocks-api-reddit-get (url params)
   "Post to an OAuth2-authenticated Reddit API endpoint (url),
@@ -284,8 +289,9 @@ using the given GET parameters (params, an alist).
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
   (tumblesocks-api-http-request-twitter
-   url (append '("tweet.fields" "created_at,public_metrics"
-		 "expansions" "author_id")
+   url (append '("tweet.fields" "created_at,public_metrics,referenced_tweets"
+		 "media.fields" "url"
+		 "expansions" "author_id,attachments.media_keys")
 	       params)
    "GET"))
 
@@ -295,9 +301,12 @@ using the given POST parameters (params, an alist).
 
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
-  (tumblesocks-api-http-request-twitter url params "POST"))
+  (tumblesocks-api-http-request-twitter
+   url params "POST"
+   '(("Content-Type" . "application/json"))))
 
-(defun tumblesocks-api-http-request-twitter (url params method)
+(defun tumblesocks-api-http-request-twitter (url params method
+						 &optional headers)
   "Post to an OAuth2-authenticated Reddit API endpoint (url),
 using the given POST parameters (params, an alist).
 
@@ -306,9 +315,10 @@ error if the error code is not in the 200 category."
   (tumblesocks-api-oauth2-request
    url params method
    'twitter
-   "tweet.read users.read tweet.write offline.access"))
+   "tweet.read users.read tweet.write like.write offline.access"
+   headers))
 
-(defun tumblesocks-api-process-response (&rest _ignored)
+(defun tumblesocks-api-process-response (&optional service)
   "Process Tumblr's response in the current buffer,
 returning JSON or signaling an error for other requests."
   (decode-coding-region (point-min) (point-max) 'utf-8-dos)
@@ -325,6 +335,8 @@ returning JSON or signaling an error for other requests."
       (delete-region (point-min) (point))
       (tumblesocks-api-process-response))
      ((not (and (<= 200 code) (<= code 299)))
+      (if (= code 401)
+	  (delq (assoc service tumblesocks-token) tumblesocks-token))
       (error (buffer-substring pointpos
                                (line-end-position))))
      (t
@@ -403,8 +415,9 @@ returning JSON or signaling an error for other requests."
      (tumblesocks-api-reddit-post "https://oauth.reddit.com/api/vote"
                                   `(:id ,id :dir 1)))
     ('twitter
-     (tumblesocks-api-twitter-post "https://api.twitter.com/1.1/favorites/create.json"
-                                  `((:id . ,id))))
+     (tumblesocks-api-twitter-post
+      "https://api.twitter.com/2/users/3236721175/likes"
+      (format "{\"tweet_id\" : \"%s\"}" id)))
     ))
 
 (defun tumblesocks-api-user-unlike (id reblog_key)
@@ -417,8 +430,10 @@ returning JSON or signaling an error for other requests."
      (tumblesocks-api-reddit-post "https://oauth.reddit.com/api/vote"
                                   `(:id ,id :dir 0)))
     ('twitter
-     (tumblesocks-api-twitter-post "https://api.twitter.com/1.1/favorites/destroy.json"
-                                  `(:id ,id)))
+     (tumblesocks-api-http-request-twitter
+      (format "https://api.twitter.com/2/users/3236721175/likes/%s" id)
+      nil
+      "DELETE"))
     ))
 
 (defun tumblesocks-api-blog-info ()

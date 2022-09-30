@@ -40,9 +40,9 @@
 (defvar sm--post-def-alist
   '((vars    . (channel-name author post-url type date title body num_likes liked
 			     num_shared shared notes tags reblog_key))
-    (tumblr  . (blog_name blog_name post_url type date title body note_count liked
-			  note_count shared notes tags reblog_key
-			  note_count timestamp))
+    (tumblr  . (blog_name blog_name post_url type date title body like_count liked
+			  reblog_count shared notes tags reblog_key
+			  reply_count timestamp))
     (reddit  . (subreddit author permalink type date title selftext score likes
 			  note_count shared notes tags reblog_key
 			  created num_comments url url_overridden_by_dest))
@@ -76,7 +76,7 @@
 			 (cdr (assoc 'tumblr sm--post-def-alist))))
 	     (date (format-time-string sm--date-format
 				       timestamp))
-	     (num_comments note_count))
+	     (num_comments reply_count))
 	  . ,temp1))
        ('reddit
 	;; (message "12 %s a" sm--client-type)
@@ -180,7 +180,8 @@
 	(concat sm--base-url-reddit
 		(gethash "permalink" ,data)))
        ('twitter
-	post-url)
+	(format "https://twitter.com/twitter/status/%s"
+		(gethash "id" ,data)))
        )))
 
 (defvar sm--reddit-offset nil)
@@ -239,16 +240,17 @@
 
 (defun sm--render-post (post &optional verbose-header)
   (let* ((begin-post-area (point)))
-    ;; (pp post)
+    ;; (pp (json-serialize post))
     (sm--with-post
      post
      ;; '(:blog_name "test" :author "a")
      ;; (pp channel-name)
-     (sm--render-header channel-name author (sm--get-url post) date
-			(if (eq title :null) nil title) num_likes
+     (sm--render-header channel-name author (sm--get-url post) (or date "")
+			(if (eq title :null) nil title) (or num_likes 0)
 			(eq liked t)
-			num_shared shared tags num_comments
+			(or num_shared 0) shared tags (or num_comments 0)
 			verbose-header)
+     ;; (message "%s" body)
      (sm--render-body type body post)
      (if (and
 	  (boundp 'url)
@@ -325,22 +327,25 @@
 	((> n 1000)    (format "%dK" (/ n 1000)))
 	(t (format "%d" n))))
 
-(defun sm--render-header (channel-name _author post-url date title likes liked
+(defun sm--render-header (channel-name author post-url date title likes liked
 				       note_count shared tags num_comments
 				       &optional verbose)
   "Draw the header for the current post, optionally being verbose."
   (let (begin end_bname)
     (setq begin (point))
-    (insert (format "%-22s" channel-name))
+    (insert (format "%-22s" (if (eq sm--client-type 'twitter)
+				author channel-name)))
     (setq end_bname (point))
     ;; Notes
     ;; (when (and note_count (> note_count 0))
     ;;   (insert " (" (format "%d" note_count) " vote"
     ;;           (if (= 1 note_count) "" "s") ")"))
 
-    (insert (format " %s %s" (if liked "❤️" "🤍") (sm--format-num likes)))
+    (insert (format " %s %-4s" (if liked "❤️" "🤍") (sm--format-num likes)))
     ;; (insert "👎 👍 🔁")
-    (insert (format "\t💬 %3s" (sm--format-num num_comments)) " comments")
+    (setq p_shared (1+ (point)))
+    (insert (format "\t%s %s shares" (if shared "🔁" "") (sm--format-num note_count)))
+    (insert (format "\t💬 %-4s" (sm--format-num num_comments)))
 
     (unless verbose
       (insert "\t" date))
@@ -363,6 +368,8 @@
       (when (and tags (> (length tags) 0))
 	(insert
 	 "\nTags: " (mapconcat #'(lambda (x)
+				   (when (eq sm--client-type 'twitter)
+				     (setq x (json-resolve "tag" x t)))
 				  (propertize
 				   (concat "#" x)
 				   'tumblesocks-tag x))
@@ -380,7 +387,9 @@
 
 (defun sm--insert-text (body)
   (tumblesocks-view-insert-html-fragment
-   (decode-coding-string (encode-coding-string body 'latin-1) 'utf-8)))
+   ;; (decode-coding-string (encode-coding-string body 'latin-1) 'utf-8)
+   body
+   ))
 
 (defun sm--insert-photo (photos)
   (let ((photo-html-frag
