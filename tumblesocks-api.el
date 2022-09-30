@@ -138,7 +138,10 @@ error if the error code is not in the 200 category."
     (let ((key (car plist))
           (value (cadr plist))
           (rest (cddr plist)))
-      (cons (cons (intern (substring (symbol-name key) 1)) value)
+      (cons (cons (if (stringp key)
+		      key
+		    (intern (substring (symbol-name key) 1)))
+		  value)
             (tumblesocks-plist-to-alist rest)))))
 
 (defun tumblesocks-api-http-oauth-get (url params)
@@ -196,6 +199,59 @@ error if the error code is not in the 200 category."
   nil
   )
 
+(defun tumblesocks-api-tumblr-get (url params)
+  "Post to an OAuth2-authenticated Tumblr API endpoint (url),
+using the given GET parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (tumblesocks-api-tumblr-request url params "GET"))
+
+(defun tumblesocks-api-tumblr-post (url params)
+  "Post to an OAuth2-authenticated Tumblr API endpoint (url),
+using the given POST parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (tumblesocks-api-tumblr-request url params "POST"))
+
+(defun tumblesocks-api-tumblr-request (url params method)
+  "Post to an OAuth2-authenticated Tumblr API endpoint (url),
+using the given POST parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (tumblesocks-api-oauth2-request url params method
+				  'tumblr "write offline_access"))
+
+(defun tumblesocks-api-oauth2-request (url params method service auth-scope)
+  (let* ((oauth2-conf (assoc service oauth2-service-conf))
+	 (conf (assoc service tumblesocks-service-conf))
+	 (tumblesocks-consumer-key (nth 1 conf))
+	 (tumblesocks-secret-key (nth 2 conf))
+	 (tumblesocks-callback-url (nth 3 conf))
+	 (data (mapconcat
+		#'(lambda (x)
+		    (and (cdr x)
+			 (concat "&" (url-hexify-string (format "%s" (car x)))
+				 "=" (url-hexify-string (format "%s" (cdr x))))))
+		(tumblesocks-plist-to-alist params) "")))
+    (unless (assoc service tumblesocks-token)
+      (push (cons service
+		  (oauth2-auth (nth 1 oauth2-conf)
+			       (nth 2 oauth2-conf)
+			       tumblesocks-consumer-key tumblesocks-secret-key
+			       auth-scope "nil" tumblesocks-callback-url)
+		  )
+	    tumblesocks-token))
+    (if (string= method "GET")
+	(setq url (concat url "?" data)))
+    (with-current-buffer
+	(oauth2-url-retrieve-synchronously
+	 (cdr (assoc service tumblesocks-token))
+	 url method data)
+      (tumblesocks-api-process-response))))
+
 (defun tumblesocks-api-reddit-get (url params)
   "Post to an OAuth2-authenticated Reddit API endpoint (url),
 using the given GET parameters (params, an alist).
@@ -218,41 +274,8 @@ using the given POST parameters (params, an alist).
 
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
-  (let* ((base "https://www.reddit.com/api/v1")
-	 (auth-scope "read,vote,submit")
-	 (conf (assoc 'reddit tumblesocks-service-conf))
-	 (tumblesocks-consumer-key (nth 1 conf))
-	 (tumblesocks-secret-key (nth 2 conf))
-	 (tumblesocks-callback-url (nth 3 conf))
-	 (data (mapconcat
-		#'(lambda (x)
-		    (and (cdr x)
-			 (concat "&" (url-hexify-string (format "%s" (car x)))
-				 "=" (url-hexify-string (format "%s" (cdr x))))))
-		(tumblesocks-plist-to-alist params) "")))
-    (unless (assoc 'reddit tumblesocks-token)
-      (push (cons 'reddit
-		  (oauth2-auth (concat base "/authorize")
-			       (concat base "/access_token")
-			       tumblesocks-consumer-key tumblesocks-secret-key
-			       auth-scope "nil" tumblesocks-callback-url)
-		  ;; (oauth2-auth-and-store (concat base "/authorize")
-		  ;; 			 (concat base "/access_token")
-		  ;; 			 auth-scope
-		  ;; 			 tumblesocks-consumer-key
-		  ;; 			 tumblesocks-secret-key
-		  ;; 			 tumblesocks-callback-url "nil")
-		  )
-	    tumblesocks-token))
-    (if (string= method "GET")
-	(setq url (concat url "?" data)))
-    (with-current-buffer
-    (oauth2-url-retrieve-synchronously
-     (cdr (assoc 'reddit tumblesocks-token)) url
-     ;; #'tumblesocks-api-process-response nil
-     method
-     data)
-    (tumblesocks-api-process-response))))
+  (tumblesocks-api-oauth2-request url params method
+				  'reddit "read,vote,submit"))
 
 (defun tumblesocks-api-twitter-get (url params)
   "Post to an OAuth2-authenticated Reddit API endpoint (url),
@@ -260,7 +283,11 @@ using the given GET parameters (params, an alist).
 
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
-  (tumblesocks-api-http-request-twitter url params "GET"))
+  (tumblesocks-api-http-request-twitter
+   url (append '("tweet.fields" "created_at,public_metrics"
+		 "expansions" "author_id")
+	       params)
+   "GET"))
 
 (defun tumblesocks-api-twitter-post (url params)
   "Post to an OAuth2-authenticated Reddit API endpoint (url),
@@ -276,39 +303,10 @@ using the given POST parameters (params, an alist).
 
 This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
-  (let* ((base "https://api.twitter.com/2/oauth2")
-	 (auth-scope "tweet.read%20users.read%20follows.read%20follows.write")
-	 (conf (assoc 'twitter tumblesocks-service-conf))
-	 (tumblesocks-consumer-key (nth 1 conf))
-	 (tumblesocks-secret-key (nth 2 conf))
-	 (tumblesocks-callback-url (nth 3 conf))
-	 (data (mapconcat
-		#'(lambda (x)
-		    (and (cdr x)
-			 (concat "&" (url-hexify-string (format "%s" (car x)))
-				 "=" (url-hexify-string (format "%s" (cdr x))))))
-		(tumblesocks-plist-to-alist params) "")))
-    (unless (assoc 'twitter tumblesocks-token)
-      (push (cons 'twitter
-		  (oauth2-auth
-		   "https://twitter.com/i/oauth2/authorize"
-		   (concat base "/token")
-		   tumblesocks-consumer-key
-		   tumblesocks-secret-key
-		   "tweet.read users.read tweet.write offline.access"
-		   "nil"
-		   "https://www.example.com")
-		  )
-	    tumblesocks-token))
-    (if (string= method "GET")
-	(setq url (concat url
-			  "?tweet.fields=created_at,public_metrics"
-			  "&expansions=author_id"
-			  data)))
-    (with-current-buffer
-	(oauth2-url-retrieve-synchronously
-	 (cdr (assoc 'twitter tumblesocks-token)) url method data)
-      (tumblesocks-api-process-response))))
+  (tumblesocks-api-oauth2-request
+   url params method
+   'twitter
+   "tweet.read users.read tweet.write offline.access"))
 
 (defun tumblesocks-api-process-response (&rest _ignored)
   "Process Tumblr's response in the current buffer,
@@ -363,7 +361,7 @@ returning JSON or signaling an error for other requests."
                (and reblog_info `(:reblog_info ,reblog_info))
                (and notes_info `(:notes_info ,notes_info)))))
     ;; (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/dashboard") args)
-    (tumblesocks-api-http-oauth-get
+    (tumblesocks-api-tumblr-get
      (tumblesocks-api-url "/blog/"
                           tumblesocks-blog
                           "/posts"
@@ -399,7 +397,7 @@ returning JSON or signaling an error for other requests."
   "Like a given post"
   (pcase sm--client-type
     ('tumblr
-     (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/like")
+     (tumblesocks-api-tumblr-post (tumblesocks-api-url "/user/like")
                                       `(:id ,id :reblog_key ,reblog_key)))
     ('reddit
      (tumblesocks-api-reddit-post "https://oauth.reddit.com/api/vote"
@@ -413,7 +411,7 @@ returning JSON or signaling an error for other requests."
   "Unlike a given post"
   (pcase sm--client-type
     ('tumblr
-     (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/unlike")
+     (tumblesocks-api-tumblr-post (tumblesocks-api-url "/user/unlike")
                                       `(:id ,id :reblog_key ,reblog_key)))
     ('reddit
      (tumblesocks-api-reddit-post "https://oauth.reddit.com/api/vote"
@@ -466,7 +464,7 @@ the returned JSON."
                (and reblog_info `(:reblog_info ,reblog_info))
                (and notes_info `(:notes_info ,notes_info))
                (and filter `(:filter ,filter)))))
-    (tumblesocks-api-http-oauth-get
+    (tumblesocks-api-tumblr-get
      (tumblesocks-api-url "/blog/"
                           tumblesocks-blog
                           "/posts"

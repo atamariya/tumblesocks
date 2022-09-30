@@ -222,6 +222,8 @@
 	(json-resolve "response.posts[0]" ,temp t))
        ('reddit
 	(json-resolve "[0].data.children[0].data" ,temp t))
+       ('twitter
+	(json-resolve "data[0]" ,temp t))
        )))
 
 (defmacro sm--get-comments-from-details (data)
