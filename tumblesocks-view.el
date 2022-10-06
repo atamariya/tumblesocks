@@ -289,7 +289,8 @@ We show `tumblesocks-posts-per-page' posts per page."
   (setq tumblesocks-view-current-offset (* (1- page) tumblesocks-posts-per-page))
   (tumblesocks-view-refresh))
 
-(defun tumblesocks-view-render-blogdata (blogdata total-posts)
+(defun tumblesocks-view-render-blogdata (blogdata total-posts
+						  &optional data)
   "Render blogdata into the current buffer.
 
 Blogdata should be the JSON result of a call to Tumblr's
@@ -306,7 +307,7 @@ blogdata to be filtered with the 'text' filter.)"
         (dotimes (i (length blogdata))
           ;; (tumblesocks-view-render-post1 (gethash "data" (aref blogdata i)))
           ;; (sm--render-post (gethash "data" (aref blogdata i)))
-          (sm--render-post (sm--get-post-from-list blogdata i))
+          (sm--render-post (sm--get-post-from-list blogdata i) nil data)
 	  )
         ;; Pagination button anyone?
         (if (> total-posts (+ tumblesocks-view-current-offset
@@ -565,8 +566,9 @@ You can browse around, edit, and delete posts from here.
 
 \\{tumblesocks-view-mode-map}"
   (interactive)
-  (setq tumblesocks-view-current-offset
-	(if preserve-page-offset tumblesocks-view-current-offset 0))
+  (unless preserve-page-offset
+    (setq tumblesocks-view-current-offset 0
+	  sm--reddit-offset nil))
   (tumblesocks-view-prepare-buffer (or tumblesocks-blog "Dashboard")
 				   preserve-page-offset)
   (let* ((dashboard-data (sm--api-dashboard)
@@ -574,7 +576,8 @@ You can browse around, edit, and delete posts from here.
                          ;;  tumblesocks-posts-per-page
                          ;;  tumblesocks-view-current-offset
 			 ;;  nil nil nil nil)
-			 ))
+			 )
+	 (extra-data (sm--get-additional-data dashboard-data)))
     ;; (let ((begin (point)))
       ;; (insert "Dashboard")
       ;; (center-line)
@@ -584,7 +587,8 @@ You can browse around, edit, and delete posts from here.
      ;; (plist-get dashboard-data :posts)
      ;; (json-resolve "data.children" dashboard-data t)
      (sm--get-list dashboard-data)
-     99999) ; allow them to browse practically infinite posts
+     99999 ; allow them to browse practically infinite posts
+     extra-data)
     (tumblesocks-view-finishrender)
     (setq tumblesocks-view-refresh-action
           '(lambda () (tumblesocks-view-dashboard t)))))
@@ -620,6 +624,7 @@ You can browse around, edit, and delete posts from here.
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
 	 (blog (sm--api-post-details data))
          (post (sm--get-post-from-details blog))
+	 (extra-data (sm--get-additional-data blog))
          (notes (sm--get-comments-from-details blog))
 	 )
     (tumblesocks-view-prepare-buffer
@@ -627,8 +632,8 @@ You can browse around, edit, and delete posts from here.
     (setq tumblesocks-view-content-start (point-marker))
     (if tumblesocks-show-full-images-in-post
         (let ((tumblesocks-desired-image-size 0))
-          (sm--render-post post t))
-      (sm--render-post post t))
+          (sm--render-post post t extra-data))
+      (sm--render-post post t extra-data))
     ;; (tumblesocks-view-render-notes notes)
     (sm--render-notes notes)
     (tumblesocks-view-finishrender)

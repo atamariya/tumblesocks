@@ -227,6 +227,15 @@
 	(json-resolve "data[0]" ,temp t))
        )))
 
+(defmacro sm--get-additional-data (data)
+  ;; Fetch additional data from response
+  (let* ((temp data))
+    `(pcase sm--client-type
+       ('twitter
+	;; (pp (json-serialize (json-resolve "includes" ,temp t)))
+	(json-resolve "includes" ,temp t))
+       )))
+
 (defmacro sm--get-comments-from-details (data)
   ;; Fetch comments from detail object
   (let* ((temp data))
@@ -237,14 +246,31 @@
 	(json-resolve "[1].data.children" ,temp t))
        )))
 
+(defun sm--find-field (collection key val data)
+  (let ((col (json-resolve collection data t))
+	(i 0)
+	res)
+    (while (and (not res)
+		col)
+      (if (string= val
+		   (json-resolve key (aref col i) t))
+	  (setq res (aref col i)))
+      (setq i (1+ i)))
+    ;; (pp (json-resolve "name" res))
+    res))
 
-(defun sm--render-post (post &optional verbose-header)
+(defun sm--render-post (post &optional verbose-header data)
   (let* ((begin-post-area (point)))
     ;; (pp (json-serialize post))
     (sm--with-post
      post
      ;; '(:blog_name "test" :author "a")
      ;; (pp channel-name)
+     (when (eq sm--client-type 'twitter)
+       (setq author (json-resolve "name"
+				  (sm--find-field "users" "id" author data)
+				  t)
+	     ))
      (sm--render-header channel-name author (sm--get-url post) (or date "")
 			(if (eq title :null) nil title) (or num_likes 0)
 			(eq liked t)
@@ -253,32 +279,33 @@
      ;; (message "%s" body)
      (sm--render-body type body post)
      (if (and
-	  (boundp 'url)
+	  (eq sm--client-type 'reddit)
+	  ;; (boundp 'url)
 	  (not (string-empty-p url))
 	  url_overridden_by_dest)
 	 ;; reddit photo
  	 (sm--render-body (if (member (file-name-extension url) '("png" "jpg"))
 			      "photo" "url")
 			  url))
-     ;; (cond
-     ;;  ;; ((null body) nil)
-     ;;  ((string= type "text")
-     ;;   (if body
-     ;;   (sm--insert-text body))
-     ;;   (if (and (boundp 'url)
-     ;; 		(not (string-empty-p url))
-     ;; 		url_overridden_by_dest)
-     ;; 	   ;; reddit photo
-     ;; 	   (tumblesocks-view-insert-parsed-html-fragment
-     ;; 	    `(p nil
-     ;; 		(img ((src . ,url)))))
-     ;; 	 ;; (tumblesocks-view-insert-parsed-html-fragment
-     ;; 	 ;;  `(a ((href . ,url)) ,url) t)
-     ;; 	 ))
-     ;;  ((string= type "photo") (sm--insert-photo photos))
-     ;;  ((string= type "blocks")
-     ;;   (sm--insert-photo (json-resolve "trail[0].content" post t)))
-     ;;  (t (insert type)))
+     (when (eq sm--client-type 'twitter)
+       ;; Twitter media - video urls are nil
+       (let ((attachments (json-resolve "attachments.media_keys" post t)))
+	 (dotimes (i (length attachments))
+	   ;; (pp (json-resolve "url"
+	   ;; 		     (sm--find-field "media"
+	   ;; 				     "media_key"
+	   ;; 				     (aref attachments i)
+	   ;; 				     data)
+	   ;; 		     t))
+	   (sm--render-body "photo"
+			    (json-resolve "url"
+					  (sm--find-field "media"
+							  "media_key"
+							  (aref attachments i)
+							  data)
+					  t)))
+ 	 ))
+
      (insert "\n")
      ;; Record this post data so we know how to read it next
      (put-text-property begin-post-area (point)
@@ -331,10 +358,12 @@
 				       note_count shared tags num_comments
 				       &optional verbose)
   "Draw the header for the current post, optionally being verbose."
-  (let (begin end_bname)
+  (let (begin end_bname str)
     (setq begin (point))
-    (insert (format "%-22s" (if (eq sm--client-type 'twitter)
-				author channel-name)))
+    (setq str (if (eq sm--client-type 'twitter)
+		  author channel-name))
+    (insert (format "%-22s" (if (> (length str) 22)
+				(substring str 0 21) str)))
     (setq end_bname (point))
     ;; Notes
     ;; (when (and note_count (> note_count 0))
@@ -358,10 +387,12 @@
 
     ;; Title
     (cond
-     (title (tumblesocks-view-insert-html-fragment title))
+     (title (tumblesocks-view-insert-html-fragment
+	     (format "<p><b>%s</b>" title)))
      ;; (caption (tumblesocks-view-insert-html-fragment caption))
      ;; (question (tumblesocks-view-insert-html-fragment question))
-     (t (insert " ")))
+     ;; (t (insert " "))
+     )
     (when verbose
       (insert "\n")
       (insert "Date: " date)
