@@ -364,7 +364,10 @@ returning JSON or signaling an error for other requests."
 
 (defun tumblesocks-api-user-dashboard (&optional limit offset type since_id reblog_info notes_info)
   "Gather information about the logged in user's dashboard"
-  (unless tumblesocks-blog (error "Which blog? Please set `tumblesocks-blog'"))
+  (unless tumblesocks-blog
+    (let ((result (tumblesocks-api-tumblr-get
+		   (tumblesocks-api-url "/user/info") nil)))
+      (setq tumblesocks-blog (json-resolve "response.user.name" result t))))
   (let ((args (append
                (and limit `(:limit ,limit))
                (and offset `(:offset ,offset))

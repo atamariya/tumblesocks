@@ -567,14 +567,14 @@ You can browse around, edit, and delete posts from here.
   (interactive)
   (setq tumblesocks-view-current-offset
 	(if preserve-page-offset tumblesocks-view-current-offset 0))
+  (tumblesocks-view-prepare-buffer (or tumblesocks-blog "Dashboard")
+				   preserve-page-offset)
   (let* ((dashboard-data (sm--api-dashboard)
 			 ;; (tumblesocks-api-user-dashboard-reddit
                          ;;  tumblesocks-posts-per-page
                          ;;  tumblesocks-view-current-offset
 			 ;;  nil nil nil nil)
 			 ))
-    (tumblesocks-view-prepare-buffer (or tumblesocks-blog "Dashboard")
-				     preserve-page-offset)
     ;; (let ((begin (point)))
       ;; (insert "Dashboard")
       ;; (center-line)
