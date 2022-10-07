@@ -29,8 +29,8 @@
 
 (require 'parse-time)
 
-(defconst sm--base-url-twitter "https://www.twitter.com")
-(defconst sm--base-url-reddit "https://www.reddit.com")
+(defconst sm--base-url-twitter "https://api.twitter.com")
+(defconst sm--base-url-reddit "https://oauth.reddit.com")
 (defconst sm--base-url-tumblr "https://api.tumblr.com/v2")
 
 (defvar sm--client-type nil)
@@ -156,7 +156,7 @@
     `(pcase sm--client-type
        ('tumblr
 	(tumblesocks-view-render-notes ,data))
-       ('reddit
+       ((or 'reddit 'twitter)
 	(tumblesocks-view-render-notes-reddit ,data))
        )))
 
@@ -164,10 +164,12 @@
   ;; Services use different fields as id for fetching
   (let* ((data post))
     `(pcase sm--client-type
-       ((or 'tumblr 'twitter)
+       ('tumblr
 	(gethash "id" ,data))
        ('reddit
 	(gethash "name" ,data))
+       ('twitter
+	(gethash "conversation_id" ,data))
        )))
 
 (defmacro sm--get-url (post)
@@ -177,7 +179,7 @@
        ('tumblr
 	(gethash "post_url" ,data))
        ('reddit
-	(concat sm--base-url-reddit
+	(concat "https://www.reddit.com"
 		(gethash "permalink" ,data)))
        ('twitter
 	(format "https://twitter.com/twitter/status/%s"
@@ -186,6 +188,9 @@
 
 (defvar sm--reddit-offset nil)
 (defvar sm--reddit-direction nil)
+(defvar sm--extra-data nil)
+(make-variable-buffer-local 'sm--extra-data)
+
 (defmacro sm--get-list (data)
   ;; Fetch post list from response
   (let* ((temp data))
@@ -244,6 +249,8 @@
 	(json-resolve "response.notes" ,temp t))
        ('reddit
 	(json-resolve "[1].data.children" ,temp t))
+       ('twitter
+	(json-resolve "data" ,temp t))
        )))
 
 (defun sm--find-field (collection key val data)
@@ -259,17 +266,17 @@
     ;; (pp (json-resolve "name" res))
     res))
 
-(defun sm--render-post (post &optional verbose-header data)
-  (let* ((begin-post-area (point)))
+(defun sm--render-post (post &optional verbose-header)
+  (let* ((begin-post-area (point))
+	 tmp)
     ;; (pp (json-serialize post))
     (sm--with-post
      post
      ;; '(:blog_name "test" :author "a")
      ;; (pp channel-name)
      (when (eq sm--client-type 'twitter)
-       (setq author (json-resolve "name"
-				  (sm--find-field "users" "id" author data)
-				  t)
+       (setq tmp (sm--find-field "users" "id" author sm--extra-data)
+	     author (if tmp (json-resolve "username" tmp t) author)
 	     ))
      (sm--render-header channel-name author (sm--get-url post) (or date "")
 			(if (eq title :null) nil title) (or num_likes 0)
@@ -295,14 +302,14 @@
 	   ;; 		     (sm--find-field "media"
 	   ;; 				     "media_key"
 	   ;; 				     (aref attachments i)
-	   ;; 				     data)
+	   ;; 				     sm--extra-data)
 	   ;; 		     t))
 	   (sm--render-body "photo"
 			    (json-resolve "url"
 					  (sm--find-field "media"
 							  "media_key"
 							  (aref attachments i)
-							  data)
+							  sm--extra-data)
 					  t)))
  	 ))
 
@@ -362,7 +369,7 @@
     (setq begin (point))
     (setq str (if (eq sm--client-type 'twitter)
 		  author channel-name))
-    (insert (format "%-22s" (if (> (length str) 22)
+    (insert (format "%-23s" (if (> (length str) 22)
 				(substring str 0 21) str)))
     (setq end_bname (point))
     ;; Notes
@@ -373,7 +380,8 @@
     (insert (format " %s %-4s" (if liked "❤️" "🤍") (sm--format-num likes)))
     ;; (insert "👎 👍 🔁")
     (setq p_shared (1+ (point)))
-    (insert (format "\t%s %s shares" (if shared "🔁" "") (sm--format-num note_count)))
+    (insert (format "\t%s %-4s" (if shared "🔂" "🔁")
+		    (sm--format-num note_count)))
     (insert (format "\t💬 %-4s" (sm--format-num num_comments)))
 
     (unless verbose
@@ -476,7 +484,7 @@
 	    body (json-resolve "body" note t))
       (if author
 	(push (apply 'widget-convert 'tree
-		     :name (format "[%s %s] %s"
+		     :name (format "[%s%s] %s"
 				   (propertize author
 					       'face 'font-lock-comment-face)
 				   (cond ((eq liked :null) "")
@@ -487,6 +495,34 @@
 		      (json-resolve "replies.data.children" note t)))
 	      children)
 	(push (widget-convert 'tree :name (format "%d more" count))
+	      children)
+	))
+    (nreverse children)
+    ))
+
+(defun sm--reply-tree-twitter (notes)
+  (let* (children note count author liked body tmp)
+    (dotimes (i (length notes))
+      (setq note (aref notes i)
+	    count (json-resolve "count" note t)
+	    author (json-resolve "author_id" note t)
+	    liked (json-resolve "likes" note t)
+	    body (json-resolve "text" note t))
+      (setq tmp (sm--find-field "users" "id" author sm--extra-data)
+	    author (if tmp (json-resolve "name" tmp t) author))
+      (if author
+	(push (apply 'widget-convert 'tree
+		     :name (format "[%s%s] %s"
+				   (propertize author
+					       'face 'font-lock-comment-face)
+				   (cond ((eq liked :null) "")
+					 ((eq liked :false) " 👎")
+					 (t " 👍"))
+				   body)
+		     (sm--reply-tree-reddit
+		      (json-resolve "replies.data.children" note t)))
+	      children)
+	(push (widget-convert 'tree :name (format "%d more" (or count 0)))
 	      children)
 	))
     (nreverse children)

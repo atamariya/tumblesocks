@@ -290,7 +290,7 @@ This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
   (tumblesocks-api-http-request-twitter
    url (append '("tweet.fields" "created_at,public_metrics,referenced_tweets"
-		 "media.fields" "url"
+		 "media.fields" "url,variants"
 		 "expansions" "author_id,attachments.media_keys")
 	       params)
    "GET"))
@@ -364,10 +364,10 @@ returning JSON or signaling an error for other requests."
 
 (defun tumblesocks-api-user-dashboard (&optional limit offset type since_id reblog_info notes_info)
   "Gather information about the logged in user's dashboard"
-  (unless tumblesocks-blog
-    (let ((result (tumblesocks-api-tumblr-get
-		   (tumblesocks-api-url "/user/info") nil)))
-      (setq tumblesocks-blog (json-resolve "response.user.name" result t))))
+  ;; (unless tumblesocks-blog
+  ;;   (let ((result (tumblesocks-api-tumblr-get
+  ;; 		   (tumblesocks-api-url "/user/info") nil)))
+  ;;     (setq tumblesocks-blog (json-resolve "response.user.name" result t))))
   (let ((args (append
                (and limit `(:limit ,limit))
                (and offset `(:offset ,offset))
@@ -375,13 +375,14 @@ returning JSON or signaling an error for other requests."
                (and since_id `(:since_id ,since_id))
                (and reblog_info `(:reblog_info ,reblog_info))
                (and notes_info `(:notes_info ,notes_info)))))
-    ;; (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/dashboard") args)
+    (if (not tumblesocks-blog)
+    (tumblesocks-api-tumblr-post (tumblesocks-api-url "/user/dashboard") args)
     (tumblesocks-api-tumblr-get
      (tumblesocks-api-url "/blog/"
                           tumblesocks-blog
                           "/posts"
                           (if type (concat "/" type) ""))
-     args)
+     args))
     ))
 
 (defun tumblesocks-api-user-likes (&optional limit offset)
@@ -415,11 +416,11 @@ returning JSON or signaling an error for other requests."
      (tumblesocks-api-tumblr-post (tumblesocks-api-url "/user/like")
                                       `(:id ,id :reblog_key ,reblog_key)))
     ('reddit
-     (tumblesocks-api-reddit-post "https://oauth.reddit.com/api/vote"
+     (tumblesocks-api-reddit-post (tumblesocks-api-url "/api/vote")
                                   `(:id ,id :dir 1)))
     ('twitter
      (tumblesocks-api-twitter-post
-      "https://api.twitter.com/2/users/3236721175/likes"
+      (tumblesocks-api-url "/2/users/3236721175/likes")
       (format "{\"tweet_id\" : \"%s\"}" id)))
     ))
 
@@ -430,11 +431,11 @@ returning JSON or signaling an error for other requests."
      (tumblesocks-api-tumblr-post (tumblesocks-api-url "/user/unlike")
                                       `(:id ,id :reblog_key ,reblog_key)))
     ('reddit
-     (tumblesocks-api-reddit-post "https://oauth.reddit.com/api/vote"
+     (tumblesocks-api-reddit-post (tumblesocks-api-url "/api/vote")
                                   `(:id ,id :dir 0)))
     ('twitter
      (tumblesocks-api-http-request-twitter
-      (format "https://api.twitter.com/2/users/3236721175/likes/%s" id)
+      (tumblesocks-api-url "/2/users/3236721175/likes/" id)
       nil
       "DELETE"))
     ))
@@ -545,7 +546,7 @@ If you're making a text post, for example, args should be something like
   (let ((args (append `(:id  ,id :reblog_key ,reblog_key)
                       (and comment (not (string= comment ""))
                            `(:comment ,comment)))))
-    (tumblesocks-api-http-oauth-post
+    (tumblesocks-api-tumblr-post
      (tumblesocks-api-url "/blog/" tumblesocks-blog "/post/reblog")
      args)))
 
@@ -578,11 +579,11 @@ If you're making a text post, for example, args should be something like
                ;; (and notes_info `(:notes_info ,notes_info))
 	       )))
     ;; (tumblesocks-api-http-apikey-get "https://www.reddit.com/.json" args)
-    (tumblesocks-api-reddit-get (concat "https://oauth.reddit.com/"
+    (tumblesocks-api-reddit-get (tumblesocks-api-url
 					(if tumblesocks-blog
-					    (format "r/%s/" tumblesocks-blog))
+					    (format "/r/%s" tumblesocks-blog))
 					;; "r/emacs/"
-					"best")
+					"/best")
 				args)
     ))
 
@@ -596,7 +597,7 @@ If you're making a text post, for example, args should be something like
                (and since_id `(:since_id ,since_id))
                (and reblog_info `(:reblog_info ,reblog_info))
                (and notes_info `(:notes_info ,notes_info)))))
-    (tumblesocks-api-reddit-get (concat "https://oauth.reddit.com" url ".json") args)
+    (tumblesocks-api-reddit-get (tumblesocks-api-url url ".json") args)
     ))
 
 (defun tumblesocks-api-user-dashboard-twitter (&optional limit offset type since_id reblog_info notes_info)
@@ -609,10 +610,25 @@ If you're making a text post, for example, args should be something like
                ;; (and since_id `(:since_id ,since_id))
                ;; (and reblog_info `(:reblog_info ,reblog_info))
                ;; (and notes_info `(:notes_info ,notes_info))
-	       )))
-    (tumblesocks-api-twitter-get
-     "https://api.twitter.com/2/users/3236721175/timelines/reverse_chronological"
-     args)
+	       ))
+	res user)
+    ;; Find userid
+    (if tumblesocks-blog
+	(setq res (tumblesocks-api-http-request-twitter
+		   (tumblesocks-api-url "/2/users/by/username/" tumblesocks-blog)
+		   nil "GET")
+	      user (json-resolve "data.id" res t))
+      (setq res (tumblesocks-api-http-request-twitter
+		 (tumblesocks-api-url "/2/users/me") nil "GET")
+	    user (json-resolve "data.id" res t)))
+    (if tumblesocks-blog
+	(tumblesocks-api-twitter-get
+	 (tumblesocks-api-url "/2/users/" user "/tweets")
+	 args)
+      (tumblesocks-api-twitter-get
+       (tumblesocks-api-url "/2/users/" user "/timelines/reverse_chronological")
+       ;; "https://api.twitter.com/2/users/3236721175/timelines/reverse_chronological"
+       args))
     ))
 
 (defun tumblesocks-api-post-details-twitter (&optional url limit offset type since_id reblog_info notes_info)
@@ -626,6 +642,14 @@ If you're making a text post, for example, args should be something like
                ;; (and since_id `(:since_id ,since_id))
                ;; (and reblog_info `(:reblog_info ,reblog_info))
                ;; (and notes_info `(:notes_info ,notes_info))
-	      )))
-    (tumblesocks-api-twitter-get "https://api.twitter.com/2/tweets" args)
+	       )))
+    ;; "https://api.twitter.com/2/tweets/search/recent?query=conversation_id:1577882425971335168&tweet.fields=in_reply_to_user_id,author_id,created_at,conversation_id"
+    (setq args (append
+		`("query" ,(concat "conversation_id:" "1577882425971335168"))
+		'("tweet.fields" "in_reply_to_user_id,author_id,created_at,conversation_id,public_metrics")
+		'("expansions" "author_id")
+		))
+    (tumblesocks-api-http-request-twitter
+     (tumblesocks-api-url "/2/tweets/search/recent") args "GET")
+    ;; (tumblesocks-api-twitter-get "https://api.twitter.com/2/tweets" args)
     ))

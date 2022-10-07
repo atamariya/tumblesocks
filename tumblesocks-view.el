@@ -307,7 +307,7 @@ blogdata to be filtered with the 'text' filter.)"
         (dotimes (i (length blogdata))
           ;; (tumblesocks-view-render-post1 (gethash "data" (aref blogdata i)))
           ;; (sm--render-post (gethash "data" (aref blogdata i)))
-          (sm--render-post (sm--get-post-from-list blogdata i) nil data)
+          (sm--render-post (sm--get-post-from-list blogdata i) nil)
 	  )
         ;; Pagination button anyone?
         (if (> total-posts (+ tumblesocks-view-current-offset
@@ -576,8 +576,8 @@ You can browse around, edit, and delete posts from here.
                          ;;  tumblesocks-posts-per-page
                          ;;  tumblesocks-view-current-offset
 			 ;;  nil nil nil nil)
-			 )
-	 (extra-data (sm--get-additional-data dashboard-data)))
+			 ))
+    (setq sm--extra-data (sm--get-additional-data dashboard-data))
     ;; (let ((begin (point)))
       ;; (insert "Dashboard")
       ;; (center-line)
@@ -587,8 +587,7 @@ You can browse around, edit, and delete posts from here.
      ;; (plist-get dashboard-data :posts)
      ;; (json-resolve "data.children" dashboard-data t)
      (sm--get-list dashboard-data)
-     99999 ; allow them to browse practically infinite posts
-     extra-data)
+     99999) ; allow them to browse practically infinite posts
     (tumblesocks-view-finishrender)
     (setq tumblesocks-view-refresh-action
           '(lambda () (tumblesocks-view-dashboard t)))))
@@ -624,16 +623,16 @@ You can browse around, edit, and delete posts from here.
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
 	 (blog (sm--api-post-details data))
          (post (sm--get-post-from-details blog))
-	 (extra-data (sm--get-additional-data blog))
          (notes (sm--get-comments-from-details blog))
 	 )
     (tumblesocks-view-prepare-buffer
      (plist-get data :title))
+    (setq sm--extra-data (sm--get-additional-data blog))
     (setq tumblesocks-view-content-start (point-marker))
     (if tumblesocks-show-full-images-in-post
         (let ((tumblesocks-desired-image-size 0))
-          (sm--render-post post t extra-data))
-      (sm--render-post post t extra-data))
+          (sm--render-post post t))
+      (sm--render-post post t))
     ;; (tumblesocks-view-render-notes notes)
     (sm--render-notes notes)
     (tumblesocks-view-finishrender)
@@ -657,26 +656,9 @@ You can browse around, edit, and delete posts from here.
       (mapcar (lambda (a)
 		(widget-apply a :create)
 		(newline))
-	      (sm--reply-tree-reddit
-	       notes))
-      ;; (apply 'widget-create 'tree
-      ;;        :name "Comments"
-      ;; 	     (sm--reply-tree-reddit
-      ;; 	      notes))
-      ;; (dotimes (i (length (json-resolve "data" notes t)))
-      ;; 	(setq note (json-resolve "data" (aref notes i) t)
-      ;; 	      author (json-resolve "author" note t)
-      ;; 	      body (json-resolve "body" note t))
-      ;; 	(when author
-      ;;     ;; (insert author ":\n  ")
-      ;;     ;; (bold-that)
-      ;;     ;; (tumblesocks-view-insert-html-fragment body t)
-      ;;     ;; (insert "\n")
-      ;;     ;; (comment-that)
-      ;; 	  (apply 'widget-create 'tree
-      ;;      :name body (sm--reply-tree-reddit
-      ;; 		       (json-resolve "replies.data.children" note t)))
-      ;; 	  ))
+	      (pcase sm--client-type
+		('reddit (sm--reply-tree-reddit notes))
+		('twitter (sm--reply-tree-twitter notes))))
 
       (put-text-property start (point) 'keymap widget-keymap)
       ;; (use-local-map widget-keymap)
@@ -759,6 +741,8 @@ You can browse around, edit, and delete posts from here.
 	 ((and (get-text-property (point) 'tumblesocks-post-data)
 	       (symbol-at-point))
           (substring-no-properties (symbol-name (symbol-at-point)))
+	  ;; (plist-get (get-text-property (point) 'tumblesocks-post-data)
+	  ;; 	     :channel-name)
 	  )))
 
 (defun tumblesocks-view-posts-tagged (tag)
