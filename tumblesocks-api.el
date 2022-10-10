@@ -140,7 +140,8 @@ error if the error code is not in the 200 category."
           (rest (cddr plist)))
       (cons (cons (if (stringp key)
 		      key
-		    (intern (substring (symbol-name key) 1)))
+		    ;; (intern (substring (symbol-name key) 1))
+		    (substring (symbol-name key) 1))
 		  value)
             (tumblesocks-plist-to-alist rest)))))
 
@@ -223,6 +224,38 @@ This function will return the response as JSON, or will signal an
 error if the error code is not in the 200 category."
   (tumblesocks-api-oauth2-request url params method
 				  'tumblr "write offline_access"))
+
+(defun tumblesocks-api-oauth-request (url params method service auth-scope
+					   &optional headers)
+  (let* ((oauth2-conf (assoc service oauth2-service-conf))
+	 (conf (assoc service tumblesocks-service-conf))
+	 (tumblesocks-consumer-key (nth 1 conf))
+	 (tumblesocks-secret-key (nth 2 conf))
+	 (oauth-callback-url (nth 3 conf)))
+    (unless (assoc service tumblesocks-token)
+      (push (cons 'tumblr
+		  (oauth-authorize-app
+		   tumblesocks-consumer-key
+		   tumblesocks-secret-key
+		   "https://www.tumblr.com/oauth/request_token"
+		   "https://www.tumblr.com/oauth/access_token"
+		   "https://www.tumblr.com/oauth/authorize"))
+	    tumblesocks-token))
+    (if (string= method "GET")
+	(setq url (concat url "?"
+			  (mapconcat
+			   #'(lambda (x)
+			       (and (cdr x)
+				    (concat "&" (url-hexify-string (format "%s" (car x)))
+					    "=" (url-hexify-string (format "%s" (cdr x))))))
+			   (tumblesocks-plist-to-alist params) ""))))
+    (with-current-buffer
+	(if (string= method "GET")
+	    (oauth-fetch-url (cdr (assoc service tumblesocks-token))
+			     url)
+	  (oauth-post-url (cdr (assoc service tumblesocks-token))
+			  url (tumblesocks-plist-to-alist params)))
+      (tumblesocks-api-process-response service))))
 
 (defun tumblesocks-api-oauth2-request (url params method service auth-scope
 					   &optional headers)
