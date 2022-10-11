@@ -482,6 +482,10 @@
 	    author (json-resolve "author" note t)
 	    liked (json-resolve "likes" note t)
 	    body (json-resolve "body" note t))
+      (when body
+	(with-temp-buffer
+	  (tumblesocks-view-insert-html-fragment body)
+	  (setq body (buffer-string))))
       (if author
 	(push (apply 'widget-convert 'tree
 		     :name (format "[%s%s] %s"

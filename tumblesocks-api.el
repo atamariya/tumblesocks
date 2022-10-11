@@ -348,7 +348,8 @@ error if the error code is not in the 200 category."
   (tumblesocks-api-oauth2-request
    url params method
    'twitter
-   "tweet.read users.read tweet.write like.write offline.access"
+   (concat "tweet.read users.read tweet.write like.write like.read "
+	   "offline.access follows.write follows.read")
    headers))
 
 (defun tumblesocks-api-process-response (&optional service)

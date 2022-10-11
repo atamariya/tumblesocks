@@ -210,6 +210,7 @@ This causes Tumblesocks to ignore the setting of
   (make-local-variable 'tumblesocks-view-content-start)
   (make-local-variable 'tumblesocks-blog)
   (make-local-variable 'sm--client-type)
+  (setq shr-max-image-proportion 0.5)
   ;;(visual-line-mode t) ;shr.el takes care of this...
   )
 
@@ -490,7 +491,11 @@ better suited to inserting each post."
 	(blog tumblesocks-blog)
 	(inhibit-read-only t))
     (pop-to-buffer-same-window (format "*%s: %s*" sm--client-type
-				       (or blogtitle "")))
+				       (or (and blogtitle
+						(if (> (length blogtitle) 20)
+						    (substring blogtitle 0 20)
+						  blogtitle))
+					   "")))
     (tumblesocks-view-mode)
     (erase-buffer)
     (setq buffer-read-only nil)
@@ -660,7 +665,7 @@ You can browse around, edit, and delete posts from here.
 		('reddit (sm--reply-tree-reddit notes))
 		('twitter (sm--reply-tree-twitter notes))))
 
-      (put-text-property start (point) 'keymap widget-keymap)
+      ;; (put-text-property start (point) 'keymap widget-keymap)
       ;; (use-local-map widget-keymap)
       (widget-setup)
       ))))
@@ -729,7 +734,9 @@ You can browse around, edit, and delete posts from here.
         (tumblesocks-api-user-unlike post_id reblog_key)
         (message "Unliked this post."))
       (let ((pos (point)))
-        (tumblesocks-view-refresh)
+	(unless (eq sm--client-type 'twitter)
+	  ;; Twitter feed is very dynamic - don't refresh
+          (tumblesocks-view-refresh))
         (goto-char pos)))))
 
 (defun tumblesocks-view--dwim-at-point ()
