@@ -170,9 +170,9 @@ This causes Tumblesocks to ignore the setting of
          (tumblesocks-view-refresh)
          (goto-char pos)))))
 
-(defun tumblesocks-view-reblog-post-at-point ()
+(defun tumblesocks-view-reblog-post-at-point (reblog-p)
   "Reblog the post at point, if there is one."
-  (interactive)
+  (interactive "P")
   (let* ((data (get-text-property (point) 'tumblesocks-post-data))
 	 (from-blog (plist-get data :channel-name))
 	 (post_id (format "%s" (plist-get data :id)))
@@ -187,12 +187,18 @@ This causes Tumblesocks to ignore the setting of
     ;;        (post (car (plist-get blog :posts))))
     ;;   (setq reblog_key (plist-get post :reblog_key)))
 
-      (tumblesocks-api-reblog-post
-       post_id reblog_key
-       (read-string "(Optional) comments to add: "))
-      (message "Reblogged.")
+      (if (not reblog-p)
+          (progn
+	    (tumblesocks-api-reblog-post
+	     post_id reblog_key
+	     (read-string "(Optional) comments to add: "))
+	    (message "Reblogged."))
+        (tumblesocks-api-reblog-undo post_id reblog_key)
+        (message "Undo reblog."))
       (let ((pos (point)))
-        (tumblesocks-view-refresh)
+        (unless (eq sm--client-type 'twitter)
+	  ;; Twitter feed is very dynamic - don't refresh
+          (tumblesocks-view-refresh))
         (goto-char pos))
       )))
 
@@ -209,6 +215,7 @@ This causes Tumblesocks to ignore the setting of
   (make-local-variable 'tumblesocks-view-current-offset)
   (make-local-variable 'tumblesocks-view-content-start)
   (make-local-variable 'tumblesocks-blog)
+  (make-local-variable 'tumblesocks-user)
   (make-local-variable 'sm--client-type)
   (setq shr-max-image-proportion 0.5)
   ;;(visual-line-mode t) ;shr.el takes care of this...
@@ -576,6 +583,7 @@ You can browse around, edit, and delete posts from here.
 	  sm--reddit-offset nil))
   (tumblesocks-view-prepare-buffer (or tumblesocks-blog "Dashboard")
 				   preserve-page-offset)
+  (sm--api-user-info)
   (let* ((dashboard-data (sm--api-dashboard)
 			 ;; (tumblesocks-api-user-dashboard-reddit
                          ;;  tumblesocks-posts-per-page

@@ -39,6 +39,9 @@ http://www.tumblr.com/oauth/apps"
   :type 'string
   :group 'tumblesocks)
 
+(defvar tumblesocks-user nil
+  "Logged in user.")
+
 (defcustom tumblesocks-blog nil
   "Your blog name, like xxx.tumblr.com.
 
@@ -276,6 +279,9 @@ error if the error code is not in the 200 category."
     (setq data (if headers
 		   ;; Use content type as is
 		   params
+		 (if (string= method "POST")
+		   (setq headers
+			 '(("Content-Type" . "application/x-www-form-urlencoded"))))
 		 (mapconcat
 		  #'(lambda (x)
 		      (and (cdr x)
@@ -398,10 +404,6 @@ returning JSON or signaling an error for other requests."
 
 (defun tumblesocks-api-user-dashboard (&optional limit offset type since_id reblog_info notes_info)
   "Gather information about the logged in user's dashboard"
-  ;; (unless tumblesocks-blog
-  ;;   (let ((result (tumblesocks-api-tumblr-get
-  ;; 		   (tumblesocks-api-url "/user/info") nil)))
-  ;;     (setq tumblesocks-blog (json-resolve "response.user.name" result t))))
   (let ((args (append
                (and limit `(:limit ,limit))
                (and offset `(:offset ,offset))
@@ -436,12 +438,36 @@ returning JSON or signaling an error for other requests."
 
 (defun tumblesocks-api-user-follow (url)
   "Follow the given blog URL."
-  (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/follow")
-                                   `(:url ,url)))
+  (pcase sm--client-type
+    ('tumblr
+     (tumblesocks-api-tumblr-post (tumblesocks-api-url "/user/follow")
+                                  `(:url ,url)))
+    ('reddit
+     (tumblesocks-api-reddit-post (tumblesocks-api-url "/api/subscribe")
+                                  `(:action "sub" :action_source "o"
+					    :sr ,url)))
+    ('twitter
+     (tumblesocks-api-twitter-post
+      (tumblesocks-api-url "/2/users/" tumblesocks-user "/following")
+      (format "{\"target_user_id\" : \"%s\"}" url)))
+    ))
+
 (defun tumblesocks-api-user-unfollow (url)
   "Unfollow the given blog URL."
-  (tumblesocks-api-http-oauth-post (tumblesocks-api-url "/user/unfollow")
-                                   `(:url ,url)))
+  (pcase sm--client-type
+    ('tumblr
+     (tumblesocks-api-tumblr-post (tumblesocks-api-url "/user/unfollow")
+                                  `(:url ,url)))
+    ('reddit
+     (tumblesocks-api-reddit-post (tumblesocks-api-url "/api/subscribe")
+                                  `(:action "unsub" :action_source "o"
+					    :sr ,url)))
+    ('twitter
+     (tumblesocks-api-http-request-twitter
+      (tumblesocks-api-url "/2/users/" tumblesocks-user "/following/" url)
+      nil
+      "DELETE"))
+    ))
 
 (defun tumblesocks-api-user-like (id reblog_key)
   "Like a given post"
@@ -454,7 +480,7 @@ returning JSON or signaling an error for other requests."
                                   `(:id ,id :dir 1)))
     ('twitter
      (tumblesocks-api-twitter-post
-      (tumblesocks-api-url "/2/users/3236721175/likes")
+      (tumblesocks-api-url "/2/users/" tumblesocks-user "/likes")
       (format "{\"tweet_id\" : \"%s\"}" id)))
     ))
 
@@ -469,7 +495,7 @@ returning JSON or signaling an error for other requests."
                                   `(:id ,id :dir 0)))
     ('twitter
      (tumblesocks-api-http-request-twitter
-      (tumblesocks-api-url "/2/users/3236721175/likes/" id)
+      (tumblesocks-api-url "/2/users/" tumblesocks-user "/likes/" id)
       nil
       "DELETE"))
     ))
@@ -576,13 +602,45 @@ If you're making a text post, for example, args should be something like
 
 (defun tumblesocks-api-reblog-post (id reblog_key &optional comment)
   "Reblog a post with the given id and reblog key."
-  (unless tumblesocks-blog (error "Which blog? Please set `tumblesocks-blog'"))
+  (unless tumblesocks-user (error "Not logged in."))
   (let ((args (append `(:id  ,id :reblog_key ,reblog_key)
                       (and comment (not (string= comment ""))
                            `(:comment ,comment)))))
-    (tumblesocks-api-tumblr-post
-     (tumblesocks-api-url "/blog/" tumblesocks-blog "/post/reblog")
-     args)))
+    (pcase sm--client-type
+      ('tumblr
+       (tumblesocks-api-tumblr-post
+	(tumblesocks-api-url "/blog/" tumblesocks-user "/post/reblog")
+	args))
+      ('reddit
+       (tumblesocks-api-reddit-post (tumblesocks-api-url "/api/submit")
+                                    `(:id ,id :sr ,tumblesocks-blog
+					  :kind "self")))
+      ('twitter
+       (tumblesocks-api-twitter-post
+	(tumblesocks-api-url "/2/users/" tumblesocks-user "/retweets")
+	(format "{\"tweet_id\" : \"%s\"}" id)))
+      )))
+
+(defun tumblesocks-api-reblog-undo (id reblog_key &optional comment)
+  "Reblog a post with the given id and reblog key."
+  (unless tumblesocks-user (error "Not logged in."))
+  (let ((args (append `(:id  ,id :reblog_key ,reblog_key)
+                      (and comment (not (string= comment ""))
+                           `(:comment ,comment)))))
+    (pcase sm--client-type
+      ('tumblr
+       (tumblesocks-api-tumblr-post
+	(tumblesocks-api-url "/blog/" tumblesocks-user "/post/reblog")
+	args))
+      ('reddit
+       (tumblesocks-api-reddit-post (tumblesocks-api-url "/api/submit")
+                                    `(:id ,id :sr ,tumblesocks-blog
+					  :kind "self")))
+      ('twitter
+       (tumblesocks-api-http-request-twitter
+	(tumblesocks-api-url "/2/users/" tumblesocks-user "/retweets/" id)
+	nil "DELETE"))
+      )))
 
 (defun tumblesocks-api-delete-post (id)
   "Delete the post with the given id. args should be as in `tumblesocks-new-post'."
@@ -652,9 +710,7 @@ If you're making a text post, for example, args should be something like
 		   (tumblesocks-api-url "/2/users/by/username/" tumblesocks-blog)
 		   nil "GET")
 	      user (json-resolve "data.id" res t))
-      (setq res (tumblesocks-api-http-request-twitter
-		 (tumblesocks-api-url "/2/users/me") nil "GET")
-	    user (json-resolve "data.id" res t)))
+      (setq user tumblesocks-user))
     (if tumblesocks-blog
 	(tumblesocks-api-twitter-get
 	 (tumblesocks-api-url "/2/users/" user "/tweets")

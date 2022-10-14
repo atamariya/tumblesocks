@@ -119,6 +119,20 @@
        (_ (let* ((channel-name "default")) . ,temp1))
        )))
 
+(defun sm--api-user-info ()
+  (unless tumblesocks-user
+    (let (result)
+      (pcase sm--client-type
+	('tumblr
+	 (setq result (tumblesocks-api-tumblr-get
+		       (tumblesocks-api-url "/user/info") nil)
+	       tumblesocks-user (json-resolve "response.user.name" result t)))
+	('twitter
+	 (setq result (tumblesocks-api-http-request-twitter
+		       (tumblesocks-api-url "/2/users/me") nil "GET")
+	       tumblesocks-user (json-resolve "data.id" result t)))
+	))))
+
 (defmacro sm--api-dashboard ()
   (let* ()
     `(pcase sm--client-type
