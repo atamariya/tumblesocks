@@ -183,7 +183,8 @@
        ('reddit
 	(gethash "name" ,data))
        ('twitter
-	(gethash "conversation_id" ,data))
+	(or (json-resolve "referenced_tweets[0].id" ,data t)
+	    (gethash "id" ,data)))
        )))
 
 (defmacro sm--get-url (post)
@@ -243,7 +244,7 @@
        ('reddit
 	(json-resolve "[0].data.children[0].data" ,temp t))
        ('twitter
-	(json-resolve "data[0]" ,temp t))
+	(json-resolve "main" ,temp t))
        )))
 
 (defmacro sm--get-additional-data (data)
@@ -268,10 +269,12 @@
        )))
 
 (defun sm--find-field (collection key val data)
-  (let ((col (json-resolve collection data t))
-	(i 0)
-	res)
+  (let* ((col (json-resolve collection data t))
+	 (len (length col))
+	 (i 0)
+	 res)
     (while (and (not res)
+		(< i len)
 		col)
       (if (string= val
 		   (json-resolve key (aref col i) t))
@@ -393,7 +396,7 @@
 
     (insert (format " %s %-4s" (if liked "❤️" "🤍") (sm--format-num likes)))
     ;; (insert "👎 👍 🔁")
-    (setq p_shared (1+ (point)))
+    ;; (setq p_shared (1+ (point)))
     (insert (format "\t%s %-4s" (if shared "🔂" "🔁")
 		    (sm--format-num note_count)))
     (insert (format "\t💬 %-4s" (sm--format-num num_comments)))
@@ -528,6 +531,10 @@
 	    body (json-resolve "text" note t))
       (setq tmp (sm--find-field "users" "id" author sm--extra-data)
 	    author (if tmp (json-resolve "name" tmp t) author))
+      (when body
+	(with-temp-buffer
+	  (tumblesocks-view-insert-html-fragment body)
+	  (setq body (buffer-string))))
       (if author
 	(push (apply 'widget-convert 'tree
 		     :name (format "[%s%s] %s"

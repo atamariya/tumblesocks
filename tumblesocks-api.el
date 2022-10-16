@@ -732,14 +732,19 @@ If you're making a text post, for example, args should be something like
                ;; (and since_id `(:since_id ,since_id))
                ;; (and reblog_info `(:reblog_info ,reblog_info))
                ;; (and notes_info `(:notes_info ,notes_info))
-	       )))
+	       ))
+	main comments)
     ;; "https://api.twitter.com/2/tweets/search/recent?query=conversation_id:1577882425971335168&tweet.fields=in_reply_to_user_id,author_id,created_at,conversation_id"
     (setq args (append
-		`("query" ,(concat "conversation_id:" "1577882425971335168"))
+		`("query" ,(concat "conversation_id:" url))
 		'("tweet.fields" "in_reply_to_user_id,author_id,created_at,conversation_id,public_metrics")
 		'("expansions" "author_id")
 		))
-    (tumblesocks-api-http-request-twitter
-     (tumblesocks-api-url "/2/tweets/search/recent") args "GET")
-    ;; (tumblesocks-api-twitter-get "https://api.twitter.com/2/tweets" args)
-    ))
+    (setq comments
+	  (tumblesocks-api-http-request-twitter
+	   (tumblesocks-api-url "/2/tweets/search/recent") args "GET")
+	  main
+	  (tumblesocks-api-twitter-get "https://api.twitter.com/2/tweets"
+				       `(:ids ,url)))
+    (puthash "main" (json-resolve "data[0]" main t) comments )
+    comments))
