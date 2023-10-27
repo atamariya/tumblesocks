@@ -32,20 +32,29 @@
 (defconst sm--base-url-twitter "https://api.twitter.com")
 (defconst sm--base-url-reddit "https://oauth.reddit.com")
 (defconst sm--base-url-tumblr "https://api.tumblr.com/v2")
+(defconst sm--base-url-youtube "https://youtube.googleapis.com/youtube/v3")
 
 (defvar sm--client-type nil)
 
 (defvar sm--date-format "%a %-e %b %Y")
 
 (defvar sm--post-def-alist
-  '((vars    . (channel-name author post-url type date title body num_likes liked
-			     num_shared shared notes tags reblog_key))
+  '((vars    . (channel-name author post-url
+			     type date title
+			     body num_likes liked
+			     num_shared shared notes
+			     tags reblog_key))
     (tumblr  . (blog_name blog_name post_url type date title body like_count liked
 			  reblog_count shared notes tags reblog_key
 			  reply_count timestamp))
     (reddit  . (subreddit author permalink type date title selftext score likes
 			  note_count shared notes tags reblog_key
 			  created num_comments url url_overridden_by_dest))
+    (youtube . (snippet.channelTitle snippet.channelId id
+			      type snippt.publishedAt snippet.title
+			      snippet.description statistics.likeCount id
+			      num_shared shared notes
+			      snippt.tags id))
     (twitter . (user.screen_name author_id urls type created_at title text
 				 public_metrics.like_count favorited
 				 public_metrics.retweet_count retweeted notes
@@ -116,6 +125,23 @@
 					(parse-time-string date))))
 	     )
 	  . ,temp1))
+       ('youtube
+	;; (message "11 %s a" sm--client-type)
+	(let*
+	    (;,(list temp post)
+	     ,@(progn
+		 (setq i -1)
+		 (mapcar #'(lambda (v)
+			     (setq i (1+ i))
+			     ;; (message "%s" i)
+			     (list
+			      (if (< i n) (nth i vars) v)
+			      `(json-resolve ,(symbol-name v) ,temp t)))
+			 (cdr (assoc 'youtube sm--post-def-alist))))
+	     (type "youtube")
+	     (num_comments (json-resolve "statistics.commentCount" ,temp t))
+	     )
+	  . ,temp1))
        (_ (let* ((channel-name "default")) . ,temp1))
        )))
 
@@ -151,6 +177,11 @@
          tumblesocks-posts-per-page
          tumblesocks-view-current-offset
 	 nil nil nil nil))
+       ('youtube
+	(tumblesocks-api-user-dashboard-youtube
+         tumblesocks-posts-per-page
+         tumblesocks-view-current-offset
+	 nil nil nil nil))
        )))
 
 (defmacro sm--api-post-details (post)
@@ -163,6 +194,8 @@
 	(tumblesocks-api-post-details-reddit (plist-get ,data :uri)))
        ('twitter
 	(tumblesocks-api-post-details-twitter (plist-get ,data :id)))
+       ('youtube
+	(tumblesocks-api-post-details-youtube (plist-get ,data :id)))
        )))
 
 (defmacro sm--render-notes (notes)
@@ -182,6 +215,8 @@
 	(gethash "id" ,data))
        ('reddit
 	(gethash "name" ,data))
+       ('youtube
+	(gethash "id" ,data))
        ('twitter
 	(or (json-resolve "referenced_tweets[0].id" ,data t)
 	    (gethash "id" ,data)))
@@ -221,6 +256,8 @@
 	(json-resolve "data.children" ,temp t))
        ('twitter
 	(json-resolve "data" ,temp t))
+       ('youtube
+	(json-resolve "items" ,temp t))
        (_ ,temp)
        )))
 
@@ -229,7 +266,7 @@
   (let* ((temp data)
 	 (temp1 i))
     `(pcase sm--client-type
-       ((or 'tumblr 'twitter)
+       ((or 'tumblr 'twitter 'youtube)
 	(aref ,temp ,temp1))
        ('reddit
 	(gethash "data" (aref ,temp ,temp1)))
@@ -245,6 +282,8 @@
 	(json-resolve "[0].data.children[0].data" ,temp t))
        ('twitter
 	(json-resolve "main" ,temp t))
+       ('youtube
+	(json-resolve "snippet" ,temp t))
        )))
 
 (defmacro sm--get-additional-data (data)
@@ -370,10 +409,18 @@
 			(json-resolve "text" a t)
 			(json-resolve "media" a t)))
      (json-resolve "trail[0].content" post t)))
+   ((string= type "youtube")
+       (sm--render-body "photo"
+			(json-resolve "snippet.thumbnails.medium.url" post t) t)
+       (sm--render-body "text"
+			(json-resolve "contentDetails.duration" post t) t)
+       (sm--render-body "text" body t))
    (t (insert type)))
   )
 
 (defun sm--format-num (n)
+  (when (stringp n)
+    (setq n (string-to-number n)))
   (cond ((> n 1000000) (format "%dM" (/ n 1000000)))
 	((> n 1000)    (format "%dK" (/ n 1000)))
 	(t (format "%d" n))))
@@ -397,8 +444,9 @@
     (insert (format " %s %-4s" (if liked "❤️" "🤍") (sm--format-num likes)))
     ;; (insert "👎 👍 🔁")
     ;; (setq p_shared (1+ (point)))
+    (unless (eq sm--client-type 'youtube)
     (insert (format "\t%s %-4s" (if shared "🔂" "🔁")
-		    (sm--format-num note_count)))
+		    (sm--format-num note_count))))
     (insert (format "\t💬 %-4s" (sm--format-num num_comments)))
 
     (unless verbose
@@ -557,6 +605,7 @@
   (apply 'concat (pcase sm--client-type
 		   ('tumblr sm--base-url-tumblr)
 		   ('reddit sm--base-url-reddit)
+		   ('youtube sm--base-url-youtube)
 		   ('twitter sm--base-url-twitter))
 	 args))
 
@@ -577,6 +626,12 @@
 (defun sm-twitter ()
   (interactive)
   (let* ((sm--client-type 'twitter))
+    (tumblesocks-view-dashboard)))
+
+;;;###autoload
+(defun sm-youtube ()
+  (interactive)
+  (let* ((sm--client-type 'youtube))
     (tumblesocks-view-dashboard)))
 
 (provide 'sm)

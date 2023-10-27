@@ -296,6 +296,31 @@ error if the error code is not in the 200 category."
 	 url method data headers)
       (tumblesocks-api-process-response service))))
 
+(defun tumblesocks-api-youtube-get (url params)
+  "Post to an OAuth2-authenticated Reddit API endpoint (url),
+using the given GET parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (tumblesocks-api-youtube-request url params "GET"))
+
+(defun tumblesocks-api-youtube-post (url params)
+  "Post to an OAuth2-authenticated Reddit API endpoint (url),
+using the given POST parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (tumblesocks-api-youtube-request url params "POST"))
+
+(defun tumblesocks-api-youtube-request (url params method)
+  "Post to an OAuth2-authenticated Reddit API endpoint (url),
+using the given POST parameters (params, an alist).
+
+This function will return the response as JSON, or will signal an
+error if the error code is not in the 200 category."
+  (tumblesocks-api-oauth2-request url params method
+				  'google "https://www.googleapis.com/auth/youtube.force-ssl"))
+
 (defun tumblesocks-api-reddit-get (url params)
   "Post to an OAuth2-authenticated Reddit API endpoint (url),
 using the given GET parameters (params, an alist).
@@ -748,3 +773,33 @@ If you're making a text post, for example, args should be something like
 				       `(:ids ,url)))
     (puthash "main" (json-resolve "data[0]" main t) comments )
     comments))
+
+(defun tumblesocks-api-user-dashboard-youtube (&optional limit offset type since_id reblog_info notes_info)
+  "Gather information about the logged in user's dashboard"
+  (let ((args (append
+               (and limit `(:limit ,limit))
+               (and (/= 0 offset)
+		    `(,sm--reddit-direction ,(plist-get sm--reddit-offset
+							sm--reddit-direction)))
+	       )))
+    ;; (tumblesocks-api-youtube-get (tumblesocks-api-url
+    ;; 					(if tumblesocks-blog
+    ;; 					    (format "/r/%s" tumblesocks-blog))
+    ;; 					;; "r/emacs/"
+    ;; 					"/best")
+    ;; 				 args)
+    (tumblesocks-api-youtube-get "https://youtube.googleapis.com/youtube/v3/videos" '("part" "snippet,statistics,contentDetails" "chart" "mostPopular"))
+    ))
+
+(defun tumblesocks-api-post-details-youtube (&optional url limit offset type since_id reblog_info notes_info)
+  "Gather information about the logged in user's dashboard"
+  ;; (unless tumblesocks-blog (error "Which blog? Please set `tumblesocks-blog'"))
+  (let ((args (append
+               (and limit `(:limit ,limit))
+               (and offset `(:offset ,offset))
+               (and type `(:offset ,type))
+               (and since_id `(:since_id ,since_id))
+               (and reblog_info `(:reblog_info ,reblog_info))
+               (and notes_info `(:notes_info ,notes_info)))))
+    (tumblesocks-api-youtube-get "https://youtube.googleapis.com/youtube/v3/commentThreads" '("part" "snippet,replies" "videoId" "7jZdXWGKc7M"))
+    ))
