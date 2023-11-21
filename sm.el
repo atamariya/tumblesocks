@@ -51,10 +51,10 @@
 			  note_count shared notes tags reblog_key
 			  created num_comments url url_overridden_by_dest))
     (youtube . (snippet.channelTitle snippet.channelId id
-			      type snippt.publishedAt snippet.title
-			      snippet.description statistics.likeCount id
-			      num_shared shared notes
-			      snippt.tags id))
+				     type snippet.publishedAt snippet.title
+				     snippet.description statistics.likeCount id
+				     num_shared shared notes
+				     snippt.tags id))
     (twitter . (user.screen_name author_id urls type created_at title text
 				 public_metrics.like_count favorited
 				 public_metrics.retweet_count retweeted notes
@@ -140,6 +140,9 @@
 			 (cdr (assoc 'youtube sm--post-def-alist))))
 	     (type "youtube")
 	     (num_comments (json-resolve "statistics.commentCount" ,temp t))
+	     (date (format-time-string sm--date-format
+				       (encode-time
+					(parse-time-string date))))
 	     )
 	  . ,temp1))
        (_ (let* ((channel-name "default")) . ,temp1))
@@ -234,6 +237,9 @@
        ('twitter
 	(format "https://twitter.com/twitter/status/%s"
 		(gethash "id" ,data)))
+       ('youtube
+	(format "https://www.youtube.com/watch?v=%s"
+		(gethash "id" ,data)))
        )))
 
 (defvar sm--reddit-offset nil)
@@ -283,7 +289,7 @@
        ('twitter
 	(json-resolve "main" ,temp t))
        ('youtube
-	(json-resolve "snippet" ,temp t))
+	(json-resolve "items[0]" ,temp t))
        )))
 
 (defmacro sm--get-additional-data (data)

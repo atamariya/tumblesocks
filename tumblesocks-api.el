@@ -788,7 +788,7 @@ If you're making a text post, for example, args should be something like
     ;; 					;; "r/emacs/"
     ;; 					"/best")
     ;; 				 args)
-    (tumblesocks-api-youtube-get "https://youtube.googleapis.com/youtube/v3/videos" '("part" "snippet,statistics,contentDetails" "chart" "mostPopular"))
+    (tumblesocks-api-youtube-get (tumblesocks-api-url "/videos") '("part" "snippet,statistics,contentDetails" "chart" "mostPopular" "regionCode" "IN"))
     ))
 
 (defun tumblesocks-api-post-details-youtube (&optional url limit offset type since_id reblog_info notes_info)
@@ -801,5 +801,6 @@ If you're making a text post, for example, args should be something like
                (and since_id `(:since_id ,since_id))
                (and reblog_info `(:reblog_info ,reblog_info))
                (and notes_info `(:notes_info ,notes_info)))))
-    (tumblesocks-api-youtube-get "https://youtube.googleapis.com/youtube/v3/commentThreads" '("part" "snippet,replies" "videoId" "7jZdXWGKc7M"))
+    (tumblesocks-api-youtube-get (tumblesocks-api-url "/videos") `("part" "snippet,statistics,contentDetails" "id" ,url))
+    ;; (tumblesocks-api-youtube-get "https://youtube.googleapis.com/youtube/v3/commentThreads" '("part" "snippet,replies" "videoId" "ABiHlt69M-4"))
     ))
