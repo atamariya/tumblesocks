@@ -101,7 +101,7 @@
 			      `(gethash ,(symbol-name v) ,temp)))
 			 (cdr (assoc 'reddit sm--post-def-alist))))
 	     (type (if (eq (gethash "is_video" ,temp) t)
-		       "video" "text" ))
+		       "video" "html" ))
 	     (date (format-time-string sm--date-format
 				       created)))
 	  . ,temp1))
@@ -118,7 +118,7 @@
 			      (if (< i n) (nth i vars) v)
 			      `(json-resolve ,(symbol-name v) ,temp t)))
 			 (cdr (assoc 'twitter sm--post-def-alist))))
-	     (type "text")
+	     (type "html")
 	     (num_comments (json-resolve "public_metrics.reply_count" post t))
 	     (date (format-time-string sm--date-format
 				       (encode-time
@@ -346,6 +346,9 @@
 			(or num_shared 0) shared tags (or num_comments 0)
 			verbose-header)
      ;; (message "%s" body)
+     (when (eq sm--client-type 'tumblr)
+       (if (string= type "text")
+	   (setq type "html")))
      (sm--render-body type body post)
      (if (and
 	  (eq sm--client-type 'reddit)
@@ -374,6 +377,15 @@
 							  sm--extra-data)
 					  t)))
  	 ))
+     (when (eq sm--client-type 'youtube)
+       (if verbose-header
+	   (sm--render-body "video" post-url t)
+	 (sm--render-body "photo"
+			  (json-resolve "snippet.thumbnails.medium.url" post t) t))
+       (sm--render-body "html"
+			(json-resolve "contentDetails.duration" post t) t)
+       (if verbose-header
+	   (sm--render-body "text" body t)))
 
      (insert "\n")
      ;; Record this post data so we know how to read it next
@@ -392,7 +404,11 @@
 (defun sm--render-body (type body &optional post)
   ""
   (cond
+   ((string= type "video")
+    (xwidget-mpv-yt body))
    ((string= type "text")
+    (insert body))
+   ((string= type "html")
     (if body
 	(sm--insert-text body)))
    ((string= type "photo")
@@ -416,11 +432,12 @@
 			(json-resolve "media" a t)))
      (json-resolve "trail[0].content" post t)))
    ((string= type "youtube")
-       (sm--render-body "photo"
-			(json-resolve "snippet.thumbnails.medium.url" post t) t)
-       (sm--render-body "text"
-			(json-resolve "contentDetails.duration" post t) t)
-       (sm--render-body "text" body t))
+       ;; (sm--render-body "photo"
+       ;; 			(json-resolve "snippet.thumbnails.medium.url" post t) t)
+       ;; (sm--render-body "text"
+       ;; 			(json-resolve "contentDetails.duration" post t) t)
+       ;; (sm--render-body "text" body t)
+       )
    (t (insert type)))
   )
 

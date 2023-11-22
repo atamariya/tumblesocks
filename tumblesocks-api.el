@@ -401,7 +401,8 @@ returning JSON or signaling an error for other requests."
       (tumblesocks-api-process-response))
      ((not (and (<= 200 code) (<= code 299)))
       (if (= code 401)
-	  (delq (assoc service tumblesocks-token) tumblesocks-token))
+	  (setq tumblesocks-token
+		(delq (assoc service tumblesocks-token) tumblesocks-token)))
       (error (buffer-substring pointpos
                                (line-end-position))))
      (t
