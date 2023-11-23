@@ -778,18 +778,12 @@ If you're making a text post, for example, args should be something like
 (defun tumblesocks-api-user-dashboard-youtube (&optional limit offset type since_id reblog_info notes_info)
   "Gather information about the logged in user's dashboard"
   (let ((args (append
-               (and limit `(:limit ,limit))
+	       '("part" "snippet,statistics,contentDetails" "chart" "mostPopular"
+		 "regionCode" "IN")
                (and (/= 0 offset)
-		    `(,sm--reddit-direction ,(plist-get sm--reddit-offset
-							sm--reddit-direction)))
+		    `("pageToken" ,(plist-get sm--reddit-offset sm--reddit-direction)))
 	       )))
-    ;; (tumblesocks-api-youtube-get (tumblesocks-api-url
-    ;; 					(if tumblesocks-blog
-    ;; 					    (format "/r/%s" tumblesocks-blog))
-    ;; 					;; "r/emacs/"
-    ;; 					"/best")
-    ;; 				 args)
-    (tumblesocks-api-youtube-get (tumblesocks-api-url "/videos") '("part" "snippet,statistics,contentDetails" "chart" "mostPopular" "regionCode" "IN"))
+    (tumblesocks-api-youtube-get (tumblesocks-api-url "/videos") args)
     ))
 
 (defun tumblesocks-api-post-details-youtube (&optional url limit offset type since_id reblog_info notes_info)

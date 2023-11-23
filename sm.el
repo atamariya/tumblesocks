@@ -263,6 +263,11 @@
        ('twitter
 	(json-resolve "data" ,temp t))
        ('youtube
+	(let ((before (json-resolve "prevPageToken" ,temp t))
+	      (after (json-resolve "nextPageToken" ,temp t)))
+	  (setq sm--reddit-offset
+	      (list :before (if (eq before :null) nil before)
+		    :after  (if (eq after :null) nil after))))
 	(json-resolve "items" ,temp t))
        (_ ,temp)
        )))
