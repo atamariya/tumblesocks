@@ -26,13 +26,12 @@
 ;; Stream ListenBrainz.org music playlist
 ;; https://listenbrainz.readthedocs.io/
 
+(require 'emms)
 (require 'json)
 
 (defconst listenbrainz-api-url "https://api.listenbrainz.org"
   "URL for listenbrainz API.
-Documentation available at https://listenbrainz.readthedocs.io/"
-  :type 'string
-  :group 'listenbrainz)
+Documentation available at https://listenbrainz.readthedocs.io/")
 
 (defcustom listenbrainz-api-token nil
   "An auth token is required for some functions.
@@ -105,6 +104,7 @@ error if the error code is not in the 200 category."
   (let* ((res (listenbrainz-api-get "https://api.listenbrainz.org/1/user/atamariya/listens"))
 	 (tracks (json-resolve "payload.listens" res t))
 	 (n (json-resolve "payload.count" res t))
+	 data track
 	 )
     (dotimes (i n)
       (setq data (aref tracks i)
