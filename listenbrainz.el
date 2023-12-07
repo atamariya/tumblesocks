@@ -39,6 +39,11 @@ Details can be found near https://listenbrainz.org/profile/"
   :type 'string
   :group 'listenbrainz)
 
+(defcustom listenbrainz-user nil
+  "Listenbrainz user"
+  :type 'string
+  :group 'listenbrainz)
+
 (defcustom emms-listenbrainz-buffer-name "Listenbrainz"
   "Name of emms buffer listenbrainz"
   :type 'string
@@ -101,7 +106,12 @@ error if the error code is not in the 200 category."
   ;;     (pp (json-resolve "album" track t))
   ;;     (pp (json-resolve "creator" track t))
   ;;     ))
-  (let* ((res (listenbrainz-api-get "https://api.listenbrainz.org/1/user/atamariya/listens"))
+  ;; "https://api.listenbrainz.org/1/user/atamariya/listens"
+  (let* ((res (listenbrainz-api-get (concat listenbrainz-api-url
+					    "/1/user/"
+					    listenbrainz-user
+					    "/listens"
+					    )))
 	 (tracks (json-resolve "payload.listens" res t))
 	 (n (json-resolve "payload.count" res t))
 	 data track
@@ -141,6 +151,8 @@ Same as `emms-track-meta-description' except it displays metadata for URLs."
   "Stream ListenBrainz.org music playlist"
   (interactive)
   (let ((buf (get-buffer emms-listenbrainz-buffer-name)))
+    (or listenbrainz-user
+	(setq listenbrainz-user (read-string "User: ")))
     (when (not buf)
       (with-current-buffer (get-buffer-create emms-listenbrainz-buffer-name)
 	(setq buf (current-buffer))
