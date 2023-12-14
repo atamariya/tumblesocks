@@ -126,41 +126,65 @@ error if the error code is not in the 200 category."
       ;; (pp (json-resolve "additional_info.origin_url" track t))
       (message "\n")
       (emms-playlist-insert-track
-       `(*track* (type . url)
-	     (name . ,(json-resolve "additional_info.origin_url" track t))
-	     (metadata ,(json-resolve "track_name" track t))))
+       `(*track*
+	 (type . url)
+	 (name . ,(json-resolve "additional_info.origin_url" track t))
+	 (info-title . ,(json-resolve "track_name" track t))
+	 (info-album . ,(json-resolve "release_name" track t))
+	 (info-artist . ,(json-resolve "artist_name" track t))
+	 (info-cover . ,(format "http://coverartarchive.org/release/%s/%s-250.jpg"
+				(json-resolve "mbid_mapping.caa_release_mbid" track t)
+				(json-resolve "mbid_mapping.caa_id" track t)))))
       ))
   )
     
 (setq emms-track-description-function 'emms-track-meta-description)
 (defun emms-track-meta-description (track)
   "Simple function to give a user-readable description of a track.
-Same as `emms-track-meta-description' except it displays metadata for URLs."
+Same as `emms-track-meta-description' except it displays info-title for URLs."
   (let ((type (emms-track-type track)))
     (cond ((eq 'file type)
 	   (emms-track-name track))
 	  ((eq 'url type)
-	   (emms-format-url-track-name (if (emms-track-get track 'metadata)
-					   (car (emms-track-get track 'metadata))
+	   (emms-format-url-track-name (if (emms-track-get track 'info-title)
+					   (emms-track-get track 'info-title)
 					 (emms-track-name track))))
 	  (t (concat (symbol-name type)
 		     ": " (emms-track-name track))))))
+
+(defun emms-playlist-mode-insert-track (track &optional no-newline)
+  "Insert the description of TRACK at point.
+When NO-NEWLINE is non-nil, do not insert a newline after the track."
+  (emms-playlist-ensure-playlist-buffer)
+  (emms-with-inhibit-read-only-t
+   (when (emms-track-get track 'info-cover)
+     (shr-insert-document `(img ((src . ,(emms-track-get track 'info-cover))
+				 (height . "50")
+				 (width . "50")
+				 )))
+     (insert " "))
+   (insert (emms-propertize (emms-track-force-description track)
+                            'emms-track track
+                            'face 'emms-playlist-track-face))
+   (when (emms-playlist-selected-track-at-p)
+     (emms-playlist-mode-overlay-selected))
+   (unless no-newline
+     (insert "\n"))))
 
 ;;;###autoload
 (defun emms-listenbrainz ()
   "Stream ListenBrainz.org music playlist"
   (interactive)
-  (let ((buf (get-buffer emms-listenbrainz-buffer-name)))
+  (let ((buf (get-buffer-create emms-listenbrainz-buffer-name)))
     (or listenbrainz-user
 	(setq listenbrainz-user (read-string "User: ")))
-    (when (not buf)
-      (with-current-buffer (get-buffer-create emms-listenbrainz-buffer-name)
-	(setq buf (current-buffer))
-	(emms-playlist-mode)
+    (when (zerop (buffer-size buf))
+      (with-current-buffer buf
 	(setq emms-playlist-buffer-p t)
 	(emms-playlist-set-playlist-buffer (current-buffer))
 	;; (emms-add-native-playlist emms-streams-file)
 	(listenbrainz--insert-playlist)
+	(emms-playlist-mode)
 	(goto-char (point-min))
 	))
     (switch-to-buffer buf)))
