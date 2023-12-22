@@ -91,7 +91,9 @@ error if the error code is not in the 200 category."
 (define-emms-source listenbrainz ()
   "An EMMS source for listenbrainz for streaming."
   (interactive)
-  (emms-playlist-insert-track (emms-track 'url "https://www.youtube.com/watch?v=DGVJtAHzzDQ")))
+  ;; (emms-playlist-insert-track (emms-track 'url "https://www.youtube.com/watch?v=DGVJtAHzzDQ"))
+  (listenbrainz--insert-playlist)
+  )
 
 (defun listenbrainz--insert-playlist ()
   (interactive)
@@ -124,7 +126,7 @@ error if the error code is not in the 200 category."
       ;; (pp (json-resolve "release_name" track t))
       ;; (pp (json-resolve "artist_name" track t))
       ;; (pp (json-resolve "additional_info.origin_url" track t))
-      (message "\n")
+      ;; (message "\n")
       (emms-playlist-insert-track
        `(*track*
 	 (type . url)
@@ -172,11 +174,11 @@ When NO-NEWLINE is non-nil, do not insert a newline after the track."
      (insert "\n"))))
 
 ;;;###autoload
-(defun emms-listenbrainz ()
+(defun emms-listenbrainz (prefix)
   "Stream ListenBrainz.org music playlist"
-  (interactive)
+  (interactive "P")
   (let ((buf (get-buffer-create emms-listenbrainz-buffer-name)))
-    (or listenbrainz-user
+    (if (or prefix (not listenbrainz-user))
 	(setq listenbrainz-user (read-string "User: ")))
     (when (zerop (buffer-size buf))
       (with-current-buffer buf

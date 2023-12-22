@@ -46,7 +46,8 @@ Documentation available at https://musicbrainz.org/doc/MusicBrainz_API"
 ;; https://musicbrainz.org/ws/2/release/80cdc014-5796-4ca4-8600-7c7237061241?inc=recordings
 (defun musicbrainz-search (title &optional artist album date)
   (let* ((url (concat musicbrainz-api-url
-		      (if album "/recording" "/release")
+		      "/recording"
+		      ;; (if album "/recording" "/release")
 		      "/?limit=5&fmt=json&query="
 		      (and title  (format "\"%s\"" title))
 		      (and artist (format " AND artist:%s" artist))
@@ -62,7 +63,7 @@ Documentation available at https://musicbrainz.org/doc/MusicBrainz_API"
     ))
 
 (defvar listen-counter 0)
-(defun listen-submit(&optional track artist album)
+(defun listen-submit(track &optional artist album)
   (let* (n data credits mb-results recording_mbid)
     (message "%s, %s, %s" track artist album)
     (setq mb-results (musicbrainz-search track artist album))
@@ -75,7 +76,10 @@ Documentation available at https://musicbrainz.org/doc/MusicBrainz_API"
       (message "%d %s %s" listen-counter track recording_mbid))
 
     (if (zerop (length recording_mbid)) (error "Not found"))
-    (unless artist
+    ;; Set values from MB response
+    (setq track (json-resolve "recordings[0].title" mb-results t)
+	  album (json-resolve "recordings[0].releases[0].title" mb-results t))
+    ;; artist
       (setq data (json-resolve "recordings[0].artist-credit" mb-results t)
 	    n (length data))
       (dotimes (i n)
@@ -83,8 +87,10 @@ Documentation available at https://musicbrainz.org/doc/MusicBrainz_API"
 	      artist (concat artist
 			     (json-resolve "name" credits t)
 			     (json-resolve "joinphrase" credits t)
-			     (if (json-resolve "joinphrase" credits t) " ")))))
+			     ;; (if (json-resolve "joinphrase" credits t) " ")
+			     )))
     (message "%s, %s, %s" track artist album)
+    ;; (error "Not found")
 
     (listenbrainz-api-request (concat listenbrainz-api-url "/1/submit-listens")
 			      (encode-coding-string
