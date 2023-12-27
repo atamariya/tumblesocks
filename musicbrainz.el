@@ -48,49 +48,80 @@ Documentation available at https://musicbrainz.org/doc/MusicBrainz_API"
   (let* ((url (concat musicbrainz-api-url
 		      "/recording"
 		      ;; (if album "/recording" "/release")
-		      "/?limit=5&fmt=json&query="
-		      (and title  (format "\"%s\"" title))
+		      "/?limit=15&fmt=json&query="
+		      (and title  (format "%s" title))
 		      (and artist (format " AND artist:%s" artist))
 		      (and album  (format " AND release:\"%s\"" album))
 		      (and date (format " AND date:%s" date))
 		      ))
-	 (buffer (url-retrieve-synchronously url)))
+	 (buffer (url-retrieve-synchronously url))
+	 results count index-album index-title options recording_mbid n)
     (pp url)
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
-	(tumblesocks-api-process-response)
+	(setq results (tumblesocks-api-process-response)
+	      count (json-resolve "count" results t))
 	))
+    (if (= count 0) (error "Not found"))
+
+    ;; Resolve track
+    (if (= count 1)
+	(setq index-title 0)
+
+      (setq data (json-resolve "recordings" results t)
+	    count (length data))
+      (dotimes (i count)
+	(push (json-resolve "title" (aref data i) t) options))
+      (setq title (completing-read "Title: " options nil t nil nil options))
+      (while (not (string= title (car options)))
+	(setq count (1- count))
+	(pop options))
+      (setq index-title (1- count))
+      )
+
+    ;; Resolve album
+    (setq data (json-resolve (format "recordings[%d].releases" index-title)
+			     results t)
+	  options nil
+	  count (length data))
+    (if (= count 1)
+	(setq index-album 0)
+
+      (dotimes (i count)
+	(push (json-resolve "title" (aref data i) t) options))
+      (setq album (completing-read "Album: " options nil t nil nil options))
+      ;; (while (not (string= album (car options)))
+      ;; 	(setq count (1- count))
+      ;; 	(pop options))
+      ;; (setq index-album (1- count))
+      )
+
+    ;; artist
+    (setq data (json-resolve (format "recordings[%d].artist-credit" index-title)
+			     results t)
+	  recording_mbid (json-resolve (format "recordings[%d].id" index-title)
+				       results t)
+	  n (length data))
+    (dotimes (i n)
+      (setq credits (aref data i)
+	    artist (concat artist
+			   (json-resolve "name" credits t)
+			   (json-resolve "joinphrase" credits t)
+			   ;; (if (json-resolve "joinphrase" credits t) " ")
+			   )))
+    (message "%s, %s, %s" title artist album)
+    (list title artist album recording_mbid)
     ))
 
 (defvar listen-counter 0)
 (defun listen-submit(track &optional artist album)
-  (let* (n data credits mb-results recording_mbid)
+  (let* (mb-results recording_mbid)
     (message "%s, %s, %s" track artist album)
     (setq mb-results (musicbrainz-search track artist album))
-    (setq recording_mbid (json-resolve "recordings[0].id" mb-results t))
-    (message "%d %s %s" listen-counter track recording_mbid)
-
-    (when (zerop (length recording_mbid))
-      (setq mb-results (musicbrainz-search track nil album))
-      (setq recording_mbid (json-resolve "recordings[0].id" mb-results t))
-      (message "%d %s %s" listen-counter track recording_mbid))
-
-    (if (zerop (length recording_mbid)) (error "Not found"))
-    ;; Set values from MB response
-    (setq track (json-resolve "recordings[0].title" mb-results t)
-	  album (json-resolve "recordings[0].releases[0].title" mb-results t))
-    ;; artist
-      (setq data (json-resolve "recordings[0].artist-credit" mb-results t)
-	    n (length data))
-      (dotimes (i n)
-	(setq credits (aref data i)
-	      artist (concat artist
-			     (json-resolve "name" credits t)
-			     (json-resolve "joinphrase" credits t)
-			     ;; (if (json-resolve "joinphrase" credits t) " ")
-			     )))
-    (message "%s, %s, %s" track artist album)
-    ;; (error "Not found")
+    (setq track  (nth 0 mb-results)
+	  artist (nth 1 mb-results)
+	  album  (nth 2 mb-results)
+	  recording_mbid (nth 3 mb-results))
 
     (listenbrainz-api-request (concat listenbrainz-api-url "/1/submit-listens")
 			      (encode-coding-string
