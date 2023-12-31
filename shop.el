@@ -24,6 +24,7 @@
 ;; Channel name: Tumblr Blog name, sub reddit, Twitter user timeline
 
 (require 'parse-time)
+(require 'shr)
 
 (defconst shop--base-url-bb "https://www.bigbasket.com/mapi/v3.5.2")
 (defconst shop--base-url-jio "https://www.jiomart.com/mst/rest/v1/5")
@@ -54,7 +55,7 @@
 		     (setq i (1+ i))
 		     (message "%s %s" i v)
 		     (list (if (< i n) (nth i temp3) v)
-			   `(gethash ,(symbol-name v) ,temp)
+			   `(json-resolve ,v ,temp t)
 			   ;; v
 			   ))
 		   temp4)
@@ -141,20 +142,34 @@
     (with-current-buffer buf
       (erase-buffer)
       (shop--with-normalized-var
-       (products)
-       (products) res
+       (products) ("products") res
        (dotimes (i (length products))
-	 (setq prod (aref products i)
-	       id (json-resolve "id" prod t)
-	       desc (json-resolve "desc" prod t)
-	       brand (json-resolve "brand.name" prod t)
-	       w (json-resolve "w" prod t)
-	       img (json-resolve "images[0].s" prod t)
-	       mrp (json-resolve "pricing.discount.mrp" prod t)
-	       price (json-resolve "pricing.discount.prim_price.sp" prod t))
-	 (insert (format "%s %s %s %s %s %s" id brand desc w img price))
-	 (newline))
-       ))
+	 (setq prod (aref products i))
+	 (shop--with-normalized-var
+	  (id desc brand w img mrp price)
+	  ("id" "desc" "brand.name" "w" "images[0].s" "pricing.discount.mrp"
+	   "pricing.discount.prim_price.sp")
+	  prod
+	  (shr-insert-document `(img ((src . ,img)
+				      (height . "50")
+				      (width  . "50")
+				      )))
+	  (insert (format " %-8s %-25s %10s %8.2f "
+			  (substring brand 0 (min 10 (length brand)))
+			  (substring desc 0 (min 25 (length desc)))
+			  w (string-to-number price)))
+	  (widget-create 'group
+			 :format "%v"
+			 :notify (lambda (widget ev source)
+				   (widget-value-set
+				    (nth 1 (widget-get widget :children))
+				    id)
+				   (message "ing %s" id))
+			 (widget-convert 'push-button :tag-glyph "plus")
+			 (widget-convert 'item :format "%v" "0")
+			 (widget-convert 'push-button :tag-glyph "minus"))
+	  )))
+      (goto-char (point-min)))
     (display-buffer buf)
     ))
 
