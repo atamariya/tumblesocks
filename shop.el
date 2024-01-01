@@ -53,7 +53,7 @@
 	 (n (length temp3)))
     `(let ,(mapcar (lambda (v)
 		     (setq i (1+ i))
-		     (message "%s %s" i v)
+		     ;; (message "%s %s" i v)
 		     (list (if (< i n) (nth i temp3) v)
 			   `(json-resolve ,v ,temp t)
 			   ;; v
@@ -62,9 +62,9 @@
        ,@temp1)
     ))
 
-(defun shop--api-url (&rest args)
-  (apply 'concat (symbol-value (intern-soft
-				(concat "shop--base-url-" shop--client-type)))
+(defun shop--fn-call (service fn &rest args)
+  (apply (intern-soft
+	  (format "shop--api-%s-%s" fn service))
 	 args))
 
 (defun shop--api-request (url &optional method data header-lines)
@@ -95,19 +95,25 @@
 
 (defun shop--api-add-bb (item)
   (let* ((url "https://www.bigbasket.com/mapi/v3.5.2/c-incr-i/")
-	 (data "{\"prod_id\":10000157,\"qty\":1,\"_bb_client_type\":\"web\",\"first_atb\":1}")
+	 (data (format "{\"prod_id\":%s,\"qty\":1,\"_bb_client_type\":\"web\",\"first_atb\":1}"
+		       item))
 	 (res (shop--api-request-bb url "POST" data
 				    `("Content-Type: application/json"))))
-    (json-serialize res)
-    ))
+    (if (not (string= (json-resolve "status" res t) "OK"))
+	(error (json-resolve "message" res t)))
+    ;; (json-serialize res)
+    res))
 
 (defun shop--api-remove-bb (item)
   (let* ((url "https://www.bigbasket.com/mapi/v3.5.2/c-decr-i/")
-	 (data "{\"prod_id\":10000157,\"qty\":1,\"_bb_client_type\":\"web\",\"first_atb\":1}")
+	 (data (format "{\"prod_id\":%s,\"qty\":1,\"_bb_client_type\":\"web\",\"first_atb\":1}"
+		       item))
 	 (res (shop--api-request-bb url "POST" data
 				    `("Content-Type: application/json"))))
-    (json-serialize res)
-    ))
+    (if (not (string= (json-resolve "status" res t) "OK"))
+	(error (json-resolve "message" res t)))
+    ;; (json-serialize res)
+    res))
 
 
 (defun shop--api-request-jio (url &optional method data header-lines)
@@ -117,54 +123,84 @@
 
 (defun shop--api-search-jio (item)
   (let* ((url "https://3yp0hp3wsh-2.algolianet.com/1/indexes/*/queries")
-	 (data (concat shop--jio-query-string "ghee" "\"}]}"))
+	 (data (concat shop--jio-query-string item "\"}]}"))
 	 (res (shop--api-request-jio url "POST" data
 				     `("Content-Type: application/json"))))
     ;; (json-serialize res)
     res))
 
 (defun shop--api-add-jio (item)
-  (let* ((url "https://www.jiomart.com/mst/rest/v1/5/cart/add_item?product_code=490000525&qty=1&seller_id=1&n=1703240024017&cart_id=399992861")
+  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/add_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id=399992861"
+		      item))
 	 (res (shop--api-request-jio url)))
-    (json-serialize res)
-    ))
+    (if (not (string= (json-resolve "status" res t) "success"))
+	(error (json-resolve "message" res t)))
+    ;; (json-serialize res)
+    res))
 
 (defun shop--api-remove-jio (item)
-  (let* ((url "https://www.jiomart.com/mst/rest/v1/5/cart/remove_item?product_code=490000525&qty=1&seller_id=1&n=1703240024017&cart_id=399992861")
+  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/remove_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id=399992861"
+		      item))
 	 (res (shop--api-request-jio url)))
-    (json-serialize res)
-    ))
+    (if (not (string= (json-resolve "status" res t) "success"))
+	(error (json-resolve "message" res t)))
+    ;; (json-serialize res)
+    res))
 
 (defun shop--item-search (item)
   (let* ((buf (get-buffer-create "Search Results"))
-	 (res (shop--api-search-bb item))
+	 ;; (service 'bb)
+	 (service 'jio)
+	 (res (shop--fn-call service "search" item))
 	 prod)
     (with-current-buffer buf
       (erase-buffer)
       (shop--with-normalized-var
-       (products) ("products") res
+       ;; (products) ("products") res
+       (products) ("results[0].hits") res
        (dotimes (i (length products))
 	 (setq prod (aref products i))
 	 (shop--with-normalized-var
 	  (id desc brand w img mrp price)
-	  ("id" "desc" "brand.name" "w" "images[0].s" "pricing.discount.mrp"
-	   "pricing.discount.prim_price.sp")
+	  ;; ("id" "desc" "brand.name" "w" "images[0].s" "pricing.discount.mrp"
+	  ;;  "pricing.discount.prim_price.sp")
+	  ;; "itemId" "uom_for_price_compare_unit" "uom_for_price_compare_factor" "buybox_mrp" "seller_wise_mrp" "thumbnail_url"
+	  ("product_code" "display_name" "brand" "uom_for_price_compare_value"
+	   "image_url" "seller_wise_mrp.TXCF.1.mrp" "seller_wise_mrp.TXCF.1.price")
 	  prod
+	  (when (eq service 'jio)
+	    (setq img (concat "https://www.jiomart.com/" img)))
+	  (message "test %s %s" brand img)
+
 	  (shr-insert-document `(img ((src . ,img)
 				      (height . "50")
 				      (width  . "50")
 				      )))
 	  (insert (format " %-8s %-25s %10s %8.2f "
-			  (substring brand 0 (min 10 (length brand)))
+			  (substring brand 0 (min 8 (length brand)))
 			  (substring desc 0 (min 25 (length desc)))
-			  w (string-to-number price)))
+			  w (if (stringp price)
+				(string-to-number price)
+			      (or price 0))))
 	  (widget-create 'group
 			 :format "%v"
-			 :notify (lambda (widget ev source)
-				   (widget-value-set
-				    (nth 1 (widget-get widget :children))
-				    id)
-				   (message "ing %s" id))
+			 :notify (lambda (widget _ev source)
+				   (let* ((all (widget-get widget :children))
+					  (plus (nth 0 all))
+					  (label (nth 1 all))
+					  (minus (nth 2 all))
+					  (i (string-to-number (widget-value label))))
+				     (when (eq source plus)
+				       (shop--fn-call service "add" id)
+				       (message "Adding %s to %s" id service)
+				       (setq i (1+ i)))
+				     (when (and (> i 0) (eq source minus))
+				       (shop--fn-call service "remove" id)
+				       (message "Removing %s from %s" id service)
+				       (setq i (1- i)))
+				     (widget-value-set label
+						       (number-to-string i))
+				     ))
 			 (widget-convert 'push-button :tag-glyph "plus")
 			 (widget-convert 'item :format "%v" "0")
 			 (widget-convert 'push-button :tag-glyph "minus"))
