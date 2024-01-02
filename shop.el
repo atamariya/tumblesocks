@@ -58,7 +58,7 @@
 			   `(json-resolve ,v ,temp t)
 			   ;; v
 			   ))
-		   temp4)
+		   (if (symbolp temp4) (symbol-value temp4) temp4))
        ,@temp1)
     ))
 
@@ -153,19 +153,36 @@
 	 (service 'jio)
 	 (res (shop--fn-call service "search" item))
 	 prod)
+    ;; Global var needed for macro expansion
+    (defvar shop--keys)
+
     (with-current-buffer buf
       (erase-buffer)
+      (setq shop--keys
+	    (pcase service
+	      ('bb '("products"))
+	      ('jio '("results[0].hits"))
+	      ))
       (shop--with-normalized-var
        ;; (products) ("products") res
-       (products) ("results[0].hits") res
+       ;; (products) ("results[0].hits") res
+       (products) shop--keys res
        (dotimes (i (length products))
 	 (setq prod (aref products i))
+	 (setq shop--keys
+	       (pcase service
+		 ('bb '("id" "desc" "brand.name" "w" "images[0].s" "pricing.discount.mrp"
+			"pricing.discount.prim_price.sp"))
+		 ('jio '("product_code" "display_name" "brand" "uom_for_price_compare_value"
+			 "image_url" "seller_wise_mrp.TXCF.1.mrp" "buybox_mrp.TLI7.price"))
+		 ))
 	 (shop--with-normalized-var
 	  (id desc brand w img mrp price)
+	  shop--keys
 	  ;; ("id" "desc" "brand.name" "w" "images[0].s" "pricing.discount.mrp"
 	  ;;  "pricing.discount.prim_price.sp")
-	  ("product_code" "display_name" "brand" "uom_for_price_compare_value"
-	   "image_url" "seller_wise_mrp.TXCF.1.mrp" "buybox_mrp.TLI7.price")
+	  ;; ("product_code" "display_name" "brand" "uom_for_price_compare_value"
+	  ;;  "image_url" "seller_wise_mrp.TXCF.1.mrp" "buybox_mrp.TLI7.price")
 	  prod
 	  (when (eq service 'jio)
 	    (setq img (concat "https://www.jiomart.com/" img "?im=Resize=(50)")))
