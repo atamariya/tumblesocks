@@ -164,13 +164,12 @@
 	  (id desc brand w img mrp price)
 	  ;; ("id" "desc" "brand.name" "w" "images[0].s" "pricing.discount.mrp"
 	  ;;  "pricing.discount.prim_price.sp")
-	  ;; "itemId" "uom_for_price_compare_unit" "uom_for_price_compare_factor" "buybox_mrp" "seller_wise_mrp" "thumbnail_url"
 	  ("product_code" "display_name" "brand" "uom_for_price_compare_value"
-	   "image_url" "seller_wise_mrp.TXCF.1.mrp" "seller_wise_mrp.TXCF.1.price")
+	   "image_url" "seller_wise_mrp.TXCF.1.mrp" "buybox_mrp.TLI7.price")
 	  prod
 	  (when (eq service 'jio)
-	    (setq img (concat "https://www.jiomart.com/" img)))
-	  (message "test %s %s" brand img)
+	    (setq img (concat "https://www.jiomart.com/" img "?im=Resize=(50)")))
+	  ;; (message "test %s %s" price img)
 
 	  (shr-insert-document `(img ((src . ,img)
 				      (height . "50")
