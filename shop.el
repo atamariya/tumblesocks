@@ -31,37 +31,12 @@
 (defmacro with-normalized-var-json (vars keys data &rest body)
   "Bind each VAR to its associated KEYed value in DATA and execute BODY."
   ;; (declare (indent 1) (debug t))
-  ;; (message "keys %s %s" keys (symbol-value `,keys))
-  (let* ((temp (if (symbolp keys) (symbol-value `,keys) keys))
-	 (i -1)
-	 (n (length temp)))
-    `(let ,(mapcar (lambda (v)
-		     (setq i (1+ i))
-		     ;; (message "%s %s" i v)
-		     (list (if (< i n) (nth i vars) v)
-			   `(json-resolve ,v ,data t)
-			   ;; v
-			   ))
-		   temp)
-       ,@body)
-    ))
+  (let* ((b `(mapcar (lambda (v) (json-resolve v ,data t)) ,keys)))
+    `(cl-destructuring-bind ,vars ,b ,@body)))
 
 (defmacro with-normalized-var (vars values &rest body)
   "Bind each VAR to its associated KEYed value in DATA and execute BODY."
-  ;; (declare (indent 1) (debug t))
-  ;; (message "values %s %s" values (symbol-value `,values))
-  (let* ((temp (if (symbolp values) (symbol-value `,values) values))
-	 (i -1)
-	 (n (length temp)))
-    `(let ,(mapcar (lambda (v)
-		     (setq i (1+ i))
-		     ;; (message "%s %s" i v)
-		     (list (if (< i n) (nth i vars) v)
-			   v
-			   ))
-		   temp)
-       ,@body)
-    ))
+  `(cl-destructuring-bind ,vars ,values ,@body))
 
 (defun shop--fn-call (service fn &rest args)
   (apply (intern-soft
@@ -148,9 +123,8 @@
     ;; (json-serialize res)
     res))
 
-(defun shop--item-display ()
+(defun shop--items-display ()
   (let* ((buf (get-buffer-create "Search Results")))
-    (defvar item)
     (with-current-buffer buf
       (erase-buffer)
       (dolist (item shop--items)
@@ -199,32 +173,30 @@
 (defun shop--item-search-for-service (service item)
   (let* ((buf (get-buffer-create "Search Results"))
 	 (res (shop--fn-call service "search" item))
+	 (keys-result
+	  (pcase service
+	    ('bb  '("products"))
+	    ('jio '("results[0].hits"))
+	    ))
+	 (keys-item
+	  (pcase service
+	    ('bb  '("id" "desc" "brand.name" "w" "images[0].s"
+		    "pricing.discount.mrp" "pricing.discount.prim_price.sp"))
+	    ('jio '("product_code" "display_name" "brand"
+		    "uom_for_price_compare_value" "image_url"
+		    "seller_wise_mrp.TXCF.1.mrp" "buybox_mrp.TLI7.price"))
+	    ))
 	 prod)
-    ;; Dynamic var needed for macro expansion
-    (defvar shop--keys-result)
-    (defvar shop--keys-item)
 
     (with-current-buffer buf
-      (setq shop--keys-result
-	    (pcase service
-	      ('bb  '("products"))
-	      ('jio '("results[0].hits"))
-	      ))
       (with-normalized-var-json
-       (products) shop--keys-result res
+       (products) keys-result res
        (dotimes (i (length products))
 	 (setq prod (aref products i))
-	 (setq shop--keys-item
-	       (pcase service
-		 ('bb  '("id" "desc" "brand.name" "w" "images[0].s"
-			 "pricing.discount.mrp" "pricing.discount.prim_price.sp"))
-		 ('jio '("product_code" "display_name" "brand"
-			 "uom_for_price_compare_value" "image_url"
-			 "seller_wise_mrp.TXCF.1.mrp" "buybox_mrp.TLI7.price"))
-		 ))
+
 	 (with-normalized-var-json
 	  (id desc brand w img mrp price)
-	  shop--keys-item
+	  keys-item
 	  prod
 	  (when (eq service 'jio)
 	    (setq img (concat "https://www.jiomart.com/" img "?im=Resize=(50)")))
@@ -246,7 +218,7 @@
       (shop--item-search-for-service s item))
     (setq shop--items (sort shop--items
 			    (lambda (a b) (< (car (last a)) (car (last b))))))
-    (shop--item-display)
+    (shop--items-display)
     ))
 
 (defun shop--get-item ()
@@ -255,22 +227,71 @@
    (save-excursion (end-of-line) (point))
    ))
 
-(defun shop-previous-line ()
+
+(defun shop-search-line ()
   (interactive)
-  (forward-line -1)
   (shop--item-search (shop--get-item)))
 
-(defun shop-next-line ()
+(defun shop-cart ()
   (interactive)
-  (forward-line)
-  (shop--item-search (shop--get-item)))
+  (let* ((buf (get-buffer-create "Search Results")))
+    ;; (setq shop--items nil)
+    ;; (dolist (s shop--services)
+    ;;   (shop--item-search-for-service s item))
+    ))
+
+(defun shop--by-price (a b)
+  (< (with-normalized-var
+      (service id desc brand w img mrp price)
+      a price)
+     (with-normalized-var
+      (service id desc brand w img mrp price)
+    b price)))
+
+(defun shop--by-brand (a b)
+  (string< (with-normalized-var
+	       (service id desc brand w img mrp price)
+	     a brand)
+	   (with-normalized-var
+	       (service id desc brand w img mrp price)
+	     b brand)))
+
+(defun shop--by-service (a b)
+  (string< (with-normalized-var
+	       (service id desc brand w img mrp price)
+	     a service)
+	   (with-normalized-var
+	       (service id desc brand w img mrp price)
+	     b service)))
+
+(defun shop--by-desc (a b)
+  (string< (with-normalized-var
+	       (service id desc brand w img mrp price)
+	     a desc)
+	   (with-normalized-var
+	       (service id desc brand w img mrp price)
+	     b desc)))
+
+(defun shop-sort ()
+  (interactive)
+  (let* ((fields '(service desc brand price))
+	 (field (completing-read "Field: " fields nil t))
+	 ;; (field "service")
+	 )
+    (setq field (if (string-empty-p field) "price" field)
+	  shop--items (sort shop--items
+			    (intern-soft (concat "shop--by-" field))
+			    ))
+    (shop--items-display)
+    ))
 
 (defvar shop-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map special-mode-map)
-    (define-key map "n" 'shop-next-line)
-    (define-key map "p" 'shop-previous-line)
+    (define-key map "c" 'shop-cart)
+    (define-key map "o" 'shop-sort)
     (define-key map "q" 'shop-mode)
+    (define-key map "s" 'shop-search-line)
     map))
 
 ;;;###autoload
