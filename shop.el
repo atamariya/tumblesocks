@@ -105,9 +105,10 @@
     ;; (json-serialize res)
     res))
 
+(defvar shop--jio-cart "421051364")
 (defun shop--api-add-jio (item)
-  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/add_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id=399992861"
-		      item))
+  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/add_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id=%s"
+		      item shop--jio-cart))
 	 (res (shop--api-request-jio url)))
     (if (not (string= (json-resolve "status" res t) "success"))
 	(error (json-resolve "message" res t)))
@@ -115,8 +116,8 @@
     res))
 
 (defun shop--api-remove-jio (item)
-  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/remove_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id=399992861"
-		      item))
+  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/remove_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id=%s"
+		      item shop--jio-cart))
 	 (res (shop--api-request-jio url)))
     (if (not (string= (json-resolve "status" res t) "success"))
 	(error (json-resolve "message" res t)))
@@ -199,6 +200,11 @@
 	  keys-item
 	  prod
 	  (when (eq service 'jio)
+	    ;; (message "test1 %s %s" desc w)
+	    (when (setq i (string-match "[0-9]+ \\(K*g\\|ml\\|L\\)" desc))
+	      (setq w (match-string 0 desc)
+		    desc (substring desc 0 i)))
+	    ;; (message "test2 %s %s" desc w)
 	    (setq img (concat "https://www.jiomart.com/" img "?im=Resize=(50)")))
 	  ;; (message "test %s %s" price img)
 
