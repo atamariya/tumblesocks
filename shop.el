@@ -225,12 +225,11 @@
     ))
 
 (defun shop--item-search (item)
-  (let* ((buf (get-buffer-create "Search Results")))
+  (let* ()
     (setq shop--items nil)
     (dolist (s shop--services)
       (shop--item-search-for-service s item))
-    (setq shop--items (sort shop--items
-			    (lambda (a b) (< (car (last a)) (car (last b))))))
+    (setq shop--items (sort shop--items 'shop--by-price))
     (shop--items-display)
     ))
 
@@ -247,51 +246,27 @@
 
 (defun shop-cart ()
   (interactive)
-  (let* ((buf (get-buffer-create "Search Results")))
+  (let* ();(buf (get-buffer-create "Search Results")))
     ;; (setq shop--items nil)
     ;; (dolist (s shop--services)
     ;;   (shop--item-search-for-service s item))
     ))
 
+;; (service id desc brand w img unit-price unit price)
 (defun shop--by-price (a b)
-  (< (with-normalized-var
-      (service id desc brand w img unit-price unit price)
-      a price)
-     (with-normalized-var
-      (service id desc brand w img unit-price unit price)
-      b price)))
+  (< (nth 8 a) (nth 8 b)))
 
 (defun shop--by-unit-price (a b)
-  (< (with-normalized-var
-      (service id desc brand w img unit-price unit price)
-      a unit-price)
-     (with-normalized-var
-      (service id desc brand w img unit-price unit price)
-    b unit-price)))
+  (< (nth 6 a) (nth 6 b)))
 
 (defun shop--by-brand (a b)
-  (string< (with-normalized-var
-	       (service id desc brand w img unit-price unit price)
-	     a brand)
-	   (with-normalized-var
-	       (service id desc brand w img unit-price unit price)
-	     b brand)))
+  (string< (nth 3 a) (nth 3 b)))
 
 (defun shop--by-service (a b)
-  (string< (with-normalized-var
-	       (service id desc brand w img unit-price unit price)
-	     a service)
-	   (with-normalized-var
-	       (service id desc brand w img unit-price unit price)
-	     b service)))
+  (string< (nth 0 a) (nth 0 b)))
 
 (defun shop--by-desc (a b)
-  (string< (with-normalized-var
-	       (service id desc brand w img unit-price unit price)
-	     a desc)
-	   (with-normalized-var
-	       (service id desc brand w img unit-price unit price)
-	     b desc)))
+  (string< (nth 2 a) (nth 2 b)))
 
 (defun shop-sort ()
   (interactive)
