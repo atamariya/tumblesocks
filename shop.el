@@ -130,19 +130,20 @@
       (erase-buffer)
       (dolist (item shop--items)
 	(with-normalized-var
-	 (service id desc brand w img mrp price)
+	 (service id desc brand w img unit-price unit price)
 	 item
 
 	 (shr-insert-document `(img ((src . ,img)
 				     (height . "50")
 				     (width  . "50")
 				     )))
-	 (insert (format " %-8s %-25s %10s %8.2f "
+	 (insert (format " %-8s %-25s %10s %8.2f %13s "
 			 (substring brand 0 (min 8 (length brand)))
 			 (substring desc 0 (min 25 (length desc)))
 			 w (if (stringp price)
 			       (string-to-number price)
-			     (or price 0))))
+			     (or price 0))
+			 (format "(%.2f/100%s)" unit-price unit)))
 	 (widget-create 'group
 			:format "%v"
 			:notify (lambda (widget _ev source)
@@ -182,12 +183,12 @@
 	 (keys-item
 	  (pcase service
 	    ('bb  '("id" "desc" "brand.name" "w" "images[0].s"
-		    "pricing.discount.mrp" "pricing.discount.prim_price.sp"))
+		    "pricing.discount.prim_price.sp"))
 	    ('jio '("product_code" "display_name" "brand"
 		    "uom_for_price_compare_value" "image_url"
-		    "seller_wise_mrp.TXCF.1.mrp" "buybox_mrp.TLI7.price"))
+		    "buybox_mrp.TLI7.price"))
 	    ))
-	 prod)
+	 prod s v unit-price unit)
 
     (with-current-buffer buf
       (with-normalized-var-json
@@ -196,7 +197,7 @@
 	 (setq prod (aref products i))
 
 	 (with-normalized-var-json
-	  (id desc brand w img mrp price)
+	  (id desc brand w img price)
 	  keys-item
 	  prod
 	  (when (eq service 'jio)
@@ -205,13 +206,19 @@
 	      (setq w (match-string 0 desc)
 		    desc (substring desc 0 i)))
 	    ;; (message "test2 %s %s" desc w)
-	    (setq img (concat "https://www.jiomart.com/" img "?im=Resize=(50)")))
+	    (setq img (concat "https://www.jiomart.com/" img)))
 	  ;; (message "test %s %s" price img)
 
 	  (setq price (if (stringp price)
 			  (string-to-number price)
 			(or price 0)))
-	  (push (list (symbol-name service) id desc brand w img mrp price)
+	  ;; Calculate unit price
+	  ;; (pp (list id desc brand w img unit-price unit price))
+	  (when (setq s (split-string w))
+	    (setq v (string-to-number (nth 0 s))
+		  unit (nth 1 s)
+		  unit-price (* (/ price v 1.0) 100)))
+	  (push (list (symbol-name service) id desc brand w img unit-price unit price)
 		shop--items)
 	  )))
       )
@@ -248,39 +255,47 @@
 
 (defun shop--by-price (a b)
   (< (with-normalized-var
-      (service id desc brand w img mrp price)
+      (service id desc brand w img unit-price unit price)
       a price)
      (with-normalized-var
-      (service id desc brand w img mrp price)
-    b price)))
+      (service id desc brand w img unit-price unit price)
+      b price)))
+
+(defun shop--by-unit-price (a b)
+  (< (with-normalized-var
+      (service id desc brand w img unit-price unit price)
+      a unit-price)
+     (with-normalized-var
+      (service id desc brand w img unit-price unit price)
+    b unit-price)))
 
 (defun shop--by-brand (a b)
   (string< (with-normalized-var
-	       (service id desc brand w img mrp price)
+	       (service id desc brand w img unit-price unit price)
 	     a brand)
 	   (with-normalized-var
-	       (service id desc brand w img mrp price)
+	       (service id desc brand w img unit-price unit price)
 	     b brand)))
 
 (defun shop--by-service (a b)
   (string< (with-normalized-var
-	       (service id desc brand w img mrp price)
+	       (service id desc brand w img unit-price unit price)
 	     a service)
 	   (with-normalized-var
-	       (service id desc brand w img mrp price)
+	       (service id desc brand w img unit-price unit price)
 	     b service)))
 
 (defun shop--by-desc (a b)
   (string< (with-normalized-var
-	       (service id desc brand w img mrp price)
+	       (service id desc brand w img unit-price unit price)
 	     a desc)
 	   (with-normalized-var
-	       (service id desc brand w img mrp price)
+	       (service id desc brand w img unit-price unit price)
 	     b desc)))
 
 (defun shop-sort ()
   (interactive)
-  (let* ((fields '(service desc brand price))
+  (let* ((fields '(service desc brand price unit-price))
 	 (field (completing-read "Field: " fields nil t))
 	 ;; (field "service")
 	 )
