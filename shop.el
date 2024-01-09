@@ -175,6 +175,7 @@
 (defun shop--item-search-for-service (service item)
   (let* ((buf (get-buffer-create "Search Results"))
 	 (res (shop--fn-call service "search" item))
+	 (re-num "\\([0-9]+\\(\.[0-9]\\)?\\) ?\\(K*g\\|ml\\|L\\)")
 	 (keys-result
 	  (pcase service
 	    ('bb  '("products"))
@@ -188,24 +189,37 @@
 		    "uom_for_price_compare_value" "image_url"
 		    "buybox_mrp.TLI7.price"))
 	    ))
-	 prod s v unit-price unit)
+	 prod s v unit-price unit mult)
 
     (with-current-buffer buf
       (with-normalized-var-json
        (products) keys-result res
        (dotimes (i (length products))
-	 (setq prod (aref products i))
+	 (setq prod (aref products i)
+	       mult 1.0)
 
 	 (with-normalized-var-json
 	  (id desc brand w img price)
 	  keys-item
 	  prod
+	  (when (eq service 'bb)
+	    (when (string-match (concat "\\([0-9]+\\) ?x ?" re-num) w)
+	      (setq mult (* mult (string-to-number (match-string 1 w)))
+		    w (match-string 2 w)))
+	    ;; (message "test1 %s %s %s" desc w mult)
+	    )
 	  (when (eq service 'jio)
-	    ;; (message "test1 %s %s" desc w)
-	    (when (setq i (string-match "[0-9]+ \\(K*g\\|ml\\|L\\)" desc))
-	      (setq w (match-string 0 desc)
+	    ;; (message "test1 %s %s %s" desc w price)
+	    (when (setq i (string-match re-num desc))
+	      (setq w (format "%s %s"
+			      (match-string 1 desc)
+			      (match-string 3 desc))
 		    desc (substring desc 0 i)))
-	    ;; (message "test2 %s %s" desc w)
+	    (unless price
+	      (let* ((mrp (json-resolve "buybox_mrp" prod t))
+		     (key (car (hash-table-keys mrp))))
+		(setq price (json-resolve (format "%s.price" key) mrp t))))
+	    ;; (message "test2 %s %s %s" desc w price)
 	    (setq img (concat "https://www.jiomart.com/" img)))
 	  ;; (message "test %s %s" price img)
 
@@ -216,8 +230,14 @@
 	  ;; (pp (list id desc brand w img unit-price unit price))
 	  (when (setq s (split-string w))
 	    (setq v (string-to-number (nth 0 s))
-		  unit (nth 1 s)
-		  unit-price (* (/ price v 1.0) 100)))
+		  unit (nth 1 s))
+	    (when (string-prefix-p "k" unit t)
+	      (setq mult (* mult 1000.0)
+		    unit (substring unit 1)))
+	    (when (string-prefix-p "l" unit t)
+	      (setq mult (* mult 1000)
+		    unit "ml"))
+	    (setq unit-price (* (/ price v mult) 100)))
 	  (push (list (symbol-name service) id desc brand w img unit-price unit price)
 		shop--items)
 	  )))
