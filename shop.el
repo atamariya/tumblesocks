@@ -143,7 +143,9 @@
 			 w (if (stringp price)
 			       (string-to-number price)
 			     (or price 0))
-			 (format "(%.2f/100%s)" unit-price unit)))
+			 (if (string-prefix-p "unit" unit t)
+			     (format "(%.2f/%s)" price unit)
+			   (format "(%.2f/100%s)" unit-price unit))))
 	 (widget-create 'group
 			:format "%v"
 			:notify (lambda (widget _ev source)
@@ -210,6 +212,8 @@
 	    )
 	  (when (eq service 'jio)
 	    ;; (message "test1 %s %s %s" desc w price)
+	    (setq desc (replace-regexp-in-string " per " " 1 " desc))
+	    (if (zerop w) (setq w "1 unit"))
 	    (when (setq i (string-match re-num desc))
 	      (setq w (format "%s %s"
 			      (match-string 1 desc)
