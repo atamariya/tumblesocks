@@ -145,9 +145,12 @@
 			 w (if (stringp price)
 			       (string-to-number price)
 			     (or price 0))
-			 (if (string-prefix-p "unit" unit t)
-			     (format "(%.2f/%s)" price unit)
-			   (format "(%.2f/100%s)" unit-price unit))))
+			 (cond ((string-prefix-p "unit" unit t)
+				(format "(%.2f/%s)" price unit))
+			       ((string-prefix-p "pcs" unit t)
+				(format "(%.2f/%s)" unit-price "unit"))
+			       (t
+				(format "(%.2f/100%s)" unit-price unit)))))
 	 (widget-create 'group
 			:format "%v"
 			:notify (lambda (widget _ev source)
@@ -170,6 +173,7 @@
 			(widget-convert 'push-button :tag-glyph "plus")
 			(widget-convert 'item :format "%v" "0")
 			(widget-convert 'push-button :tag-glyph "minus"))
+	 (insert service)
 	 (newline)
 	 ))
       (goto-char (point-min)))
@@ -179,7 +183,7 @@
 (defun shop--item-search-for-service (service item)
   (let* ((buf (get-buffer-create "Search Results"))
 	 (res (shop--fn-call service "search" item))
-	 (re-num "\\([0-9]+\\(\.[0-9]\\)?\\) ?\\(K*g\\|ml\\|L\\)")
+	 (re-num "\\([0-9]+\\(\.[0-9]\\)?\\) ?\\(K*g\\|ml\\|L\\|pcs\\)")
 	 (keys-result
 	  (pcase service
 	    ('bb  '("products"))
@@ -191,7 +195,7 @@
 		    "pricing.discount.prim_price.sp"))
 	    ('jio '("product_code" "display_name" "brand"
 		    "uom_for_price_compare_value" "image_url"
-		    "buybox_mrp.TLI7.price"))
+		    "buybox_mrp.TNJ0.price")) ;; TNJ0 TLI7
 	    ))
 	 prod s v unit-price unit mult)
 
@@ -244,6 +248,8 @@
 	    (when (string-prefix-p "l" unit t)
 	      (setq mult (* mult 1000)
 		    unit "ml"))
+	    (when (string-prefix-p "pcs" unit t)
+	      (setq mult (* mult 100)))
 	    (setq unit-price (* (/ price v mult) 100)))
 	  (push (list (symbol-name service) id desc brand w img unit-price unit price)
 		shop--items)
