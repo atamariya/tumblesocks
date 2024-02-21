@@ -128,15 +128,17 @@
   (let* ((buf (get-buffer-create "Search Results")))
     (with-current-buffer buf
       (erase-buffer)
+      (jit-image-mode)
       (dolist (item shop--items)
 	(with-normalized-var
 	 (service id desc brand w img unit-price unit price)
 	 item
 
-	 (shr-insert-document `(img ((src . ,img)
-				     (height . "50")
-				     (width  . "50")
-				     )))
+	 (jit-insert-image-from-url img nil 50)
+	 ;; (shr-insert-document `(img ((src . ,img)
+	 ;; 			     (height . "50")
+	 ;; 			     (width  . "50")
+	 ;; 			     )))
 	 (insert (format " %-8s %-25s %10s %8.2f %13s "
 			 (substring brand 0 (min 8 (length brand)))
 			 (substring desc 0 (min 25 (length desc)))
@@ -254,7 +256,7 @@
     (setq shop--items nil)
     (dolist (s shop--services)
       (shop--item-search-for-service s item))
-    (setq shop--items (sort shop--items 'shop--by-price))
+    (setq shop--items (sort shop--items 'shop--by-unit-price))
     (shop--items-display)
     ))
 
