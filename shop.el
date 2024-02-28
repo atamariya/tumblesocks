@@ -128,7 +128,7 @@
   (let* ((buf (get-buffer-create "Search Results")))
     (with-current-buffer buf
       (erase-buffer)
-      (jit-image-mode)
+      (if (fboundp 'jit-image-mode) (jit-image-mode))
       (dolist (item shop--items)
 	(with-normalized-var
 	 (service id desc brand w img unit-price unit price)
