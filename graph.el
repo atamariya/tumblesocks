@@ -22,12 +22,17 @@
 
 (require 'gnuplot)
 
+
+(defvar gnuplot--flag-day nil)
+(defvar gnuplot--flag-month nil)
+(defvar gnuplot--flag-year nil)
+
 (defun gnuplot--resolve-token (a)
-  (cond ((= (length a) 4) "Y")
-        ((= (length a) 3) "b") ;; Jan
-        ((> (string-to-number a) 31) "y")
-        ((> (string-to-number a) 12) "d")
-        (t "m")))
+  (cond ((= (length a) 4) (setq gnuplot--flag-year "%Y"))
+        ((= (length a) 3) (setq gnuplot--flag-month "%b")) ;; Jan
+        ((> (string-to-number a) 31) (setq gnuplot--flag-year "%y"))
+        ((> (string-to-number a) 12) (setq gnuplot--flag-day "%d"))
+        (t (setq gnuplot--flag-month "%m"))))
 
 (defun gnuplot--gen-datefmt (datetime &optional datetime1)
   "Generate a gnuplot date format string or NIL if invalid."
@@ -40,10 +45,15 @@
          (tokens2 (split-string datetime1 sep))
          res tokens3)
     (when (or sep time)
+      (setq gnuplot--flag-day nil
+	    gnuplot--flag-month nil
+	    gnuplot--flag-year nil)
       ;; 1. Check for length
-      (setq out (mapcar 'gnuplot--resolve-token tokens1))
-      (pp out)
+      (setq tokens3 (mapcar 'gnuplot--resolve-token tokens1))
+      ;; (pp tokens3)
+
       ;; 2. Use second date to disambiguate
+      (unless (and gnuplot--flag-day gnuplot--flag-month gnuplot--flag-year)
       (pcase-let
           ((`(,s1 ,s2 ,s3) tokens1)
            (`(,t1 ,t2 ,t3) tokens2))
@@ -65,8 +75,8 @@
       ;;   (if (string= s2 t2)   (push "%m" tokens3) (push "%d" tokens3))
       ;;   (if (= (length s2) 4) (push "%Y" tokens3))
       ;;   )
-      (setq tokens3 (nreverse tokens3))
       ;; (pp tokens)
+      (setq tokens3 (nreverse tokens3)))
       (setq res (mapconcat 'identity tokens3 sep))
       ;; (pcase-let
       ;;     ((`(,sec ,min ,hour ,day ,mon ,year dow dst tz) tokens))
@@ -96,20 +106,20 @@
       )
     res))
 
-;; gnuplot-selection
 ;; styles lines, points, linespoints, impulses, dots, steps, errorbars (or
 ;; yerrorbars), xerrorbars, xyerrorbars, boxes, boxerrorbars, boxxyerrorbars
 (defun gnuplot-rectangle (&optional title style)
   (interactive)
+  (or killed-rectangle (error "Invalid tabular data"))
   (let* ((name (make-temp-file "plot"))
          (data killed-rectangle)
          (sep (and (string-match-p "," (car data)) ","))
          (cols (split-string (car data) sep))
          (n (length cols))
-         buf xlabel ylabel header j labelcol labelcol1 datetime)
+         buf xlabel ylabel header j labelcol datetime)
     ;; Extract plot details
     ;; Column header
-    (when (setq labelcol1 (string-match-p "^[a-zA-Z]" (car cols)))
+    (when (string-match-p "^[a-zA-Z]" (car cols))
       (if (= n 1)
           (if (string-match-p "^[a-zA-Z]" (nth 1 data))
               (error "Bad data")
@@ -151,10 +161,10 @@
       (insert "set ylabel '" (or ylabel "y-axis") "'\n")
       (when datetime
         (insert "set xdata time\n")
-        (insert "set format x \"%b-%y\"\n")
+        (insert "set format x \"" (if (< (length data) 10) "%d-" "") "%b-%y\"\n")
         (insert "set timefmt \"" datetime "\"\n"))
       (insert "plot '" name "'")
-      (setq j (if (or labelcol datetime) 1 0))
+      (setq j (if (or labelcol datetime (> n 1)) 1 0))
       (dotimes (i (- n j))
         (insert " using ")
         (when (not (string= style "histograms"))
