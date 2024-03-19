@@ -21,6 +21,7 @@
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 (require 'gnuplot)
+(require 'rect)
 
 
 (defvar gnuplot--flag-day nil)
@@ -39,11 +40,11 @@
   (let* (;(tokens (parse-time-string (org-read-date nil nil datetime)))
          (dash  (and (string-match-p "-" datetime) "-"))
          (slash (and (string-match-p "/" datetime) "/"))
-         (time (string-match-p ":" datetime))
-         (sep (or dash slash))
+         (time  (string-match-p ":" datetime))
+         (sep   (or dash slash))
          (tokens1 (split-string datetime sep))
          (tokens2 (split-string datetime1 sep))
-         res tokens3)
+         res tokens3 out)
     (when (or sep time)
       (setq gnuplot--flag-day nil
 	    gnuplot--flag-month nil
@@ -106,26 +107,26 @@
       )
     res))
 
-;; styles lines, points, linespoints, impulses, dots, steps, errorbars (or
-;; yerrorbars), xerrorbars, xyerrorbars, boxes, boxerrorbars, boxxyerrorbars
-(defun gnuplot-rectangle (&optional title style)
-  (interactive)
-  (or killed-rectangle (error "Invalid tabular data"))
+(defun gnuplot--draw (&optional title style)
+  (or killed-rectangle (error "No tabular data"))
   (let* ((name (make-temp-file "plot"))
          (data killed-rectangle)
-         (sep (and (string-match-p "," (car data)) ","))
+         (comma (and (string-match-p "," (car data)) ","))
+         (pipe  (and (string-match-p "|" (car data)) "|"))
+	 (sep   (or comma pipe))
          (cols (split-string (car data) sep))
          (n (length cols))
+	 (str-check "^ *[a-zA-Z'\"]")
          buf xlabel ylabel header j labelcol datetime)
     ;; Extract plot details
     ;; Column header
-    (when (string-match-p "^[a-zA-Z]" (car cols))
+    (when (string-match-p str-check (car cols))
       (if (= n 1)
-          (if (string-match-p "^[a-zA-Z]" (nth 1 data))
+          (if (string-match-p str-check (nth 1 data))
               (error "Bad data")
             (setq ylabel (car cols)
                   labelcol nil))
-        (when (string-match-p "^[a-zA-Z]" (nth 1 cols))
+        (when (string-match-p str-check (nth 1 cols))
           (setq header cols
                 ;; style "histograms"
                 )
@@ -137,16 +138,17 @@
           ;; (pop killed-rectangle)
           )))
     ;; First column might be a label column or datetime
-    (setq labelcol (string-match-p "^[a-zA-Z]" (nth 1 data)))
-    (setq datetime (gnuplot--gen-datefmt (car (split-string (nth 1 data)))
-                                         (car (split-string (nth 2 data)))))
+    (setq labelcol (string-match-p str-check (nth 1 data)))
+    (setq datetime (gnuplot--gen-datefmt (car (split-string (nth 1 data) sep))
+                                         (car (split-string (nth 2 data) sep))))
 
-    (setq buf (find-file name))
+    (setq buf (find-file-noselect name))
     (with-current-buffer buf
       (yank-rectangle)
       (save-buffer))
 
     (setq style (or style "line"))
+    ;; (setq style (if labelcol "histograms"))
     (with-temp-buffer
       (insert "unset xdata\n")
       (insert "unset ydata\n")
@@ -154,8 +156,11 @@
       (insert "unset yrange\n")
       (insert "unset format xy\n")
       (insert "unset timefmt\n")
+      (insert "reset\n")
 
-      (insert "set datafile separator " (if sep "comma" "whitespace") "\n")
+      (insert "set datafile separator "
+	      (if sep (format "'%s'" sep) "whitespace") "\n")
+      (insert "set style fill solid 0.5\n")
       (insert "set title  '" (or title  "Title")  "'\n")
       (insert "set xlabel '" (or xlabel "x-axis") "'\n")
       (insert "set ylabel '" (or ylabel "y-axis") "'\n")
@@ -186,6 +191,21 @@
     (kill-buffer buf)
     ;; (delete-file name)
     ))
+
+;; styles lines, points, linespoints, impulses, dots, steps, errorbars (or
+;; yerrorbars), xerrorbars, xyerrorbars, boxes, boxerrorbars, boxxyerrorbars
+(defun gnuplot-rectangle (prefix)
+  (interactive "P")
+  (let ((styles '(("line" . "line")
+		  ("bar" . "histograms")
+		  ("scatter" . "circles")
+		  ))
+	title style)
+    (when prefix
+      (setq title (read-string "Title: "))
+      (setq style (cdr (assoc (completing-read "Style: " styles) styles)))
+      )
+    (gnuplot--draw title style)))
 
 
 (provide 'graph)
