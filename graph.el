@@ -23,7 +23,12 @@
 (require 'gnuplot)
 (require 'rect)
 
-
+(defvar gnuplot--styles '(("line" . "line")
+			  ("bar" . "histograms")
+			  ("scatter" . "circles")
+			  ("pie" . "pie")
+			  ("spider" . "spider")
+			  ))
 (defvar gnuplot--flag-day nil)
 (defvar gnuplot--flag-month nil)
 (defvar gnuplot--flag-year nil)
@@ -171,6 +176,26 @@
 	    "with points pointtype 5 pointsize 4 linecolor i+1\n")
   ))
 
+(defun gnuplot--draw-spider (n header labelcol)
+  (let* ((j (if labelcol 1 0))
+	 (colfmt (format "%d:%d" j (- n j))))
+    (if (< (- n j) 3) (error "Atleast 3 axes needed"))
+
+    (insert "set spiderplot\n")
+    (insert "set style spiderplot fill transparent solid 0.30 border\n")
+    (insert "set for [i=" colfmt "] paxis i range [0:100]\n")
+    (if (not header)
+	(insert "set for [i=" colfmt "] paxis i label sprintf('%d',i)\n"))
+    (insert "set paxis 1 tics\n")
+    (insert "set grid spider linetype black linewidth 0.2\n")
+
+    (insert "plot for [i="
+	    (format "%d:%d" (1+ j) n)
+	    "] file using i:key(1)"
+	    (if header " title columnhead" "")
+	    "\n")    
+    ))
+
 (defun gnuplot--draw (&optional title style)
   (or killed-rectangle (error "No tabular data"))
   (let* ((name (make-temp-file "plot"))
@@ -213,6 +238,7 @@
       (save-buffer))
 
     (setq style (or style "line"))
+    ;; (setq style "spider")
     ;; (setq style (if labelcol "histograms"))
     ;; (setq style "pie")
     (with-temp-buffer
@@ -233,6 +259,7 @@
 
       (pcase style
 	("pie" (gnuplot--draw-pie m header labelcol datetime))
+	("spider" (gnuplot--draw-spider n header labelcol))
 	(_ (gnuplot--draw-line style m n xlabel ylabel labelcol datetime)))
 
       (newline)
@@ -246,13 +273,10 @@
 
 ;; styles lines, points, linespoints, impulses, dots, steps, errorbars (or
 ;; yerrorbars), xerrorbars, xyerrorbars, boxes, boxerrorbars, boxxyerrorbars
+;;;###autoload
 (defun gnuplot-rectangle (prefix)
   (interactive "P")
-  (let ((styles '(("line" . "line")
-		  ("bar" . "histograms")
-		  ("scatter" . "circles")
-		  ("pie" . "pie")
-		  ))
+  (let ((styles gnuplot--styles)
 	title style)
     (when prefix
       (setq title (read-string "Title: "))
