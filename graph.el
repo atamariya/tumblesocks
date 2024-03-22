@@ -107,6 +107,70 @@
       )
     res))
 
+(defun gnuplot--draw-line (style m n xlabel ylabel labelcol datetime)
+  ""
+  (let (j)
+    (insert "set xlabel '" (or xlabel "x-axis") "'\n")
+    (insert "set ylabel '" (or ylabel "y-axis") "'\n")
+    (when datetime
+      (insert "set xdata time\n")
+      (insert "set format x \"" (if (< m 10) "%d-" "") "%b-%y\"\n")
+      (insert "set timefmt \"" datetime "\"\n"))
+    (insert "plot file")
+    (setq j (if (or labelcol datetime (> n 1)) 1 0))
+    (dotimes (i (- n j))
+      (insert " using ")
+      (when (not (string= style "histograms"))
+	(insert (number-to-string
+		 (if (or labelcol (= n 1)) 0 1))
+		":"))
+      (insert (number-to-string (+ i j 1)))
+      (if (and labelcol (not datetime)) (insert ":xtic(1)"))
+      (if (< i n) (insert " with " style))
+      (if (> n 2)
+          (insert " title columnhead")
+	(insert " notitle"))
+      (if (< i (- n j 1)) (insert ", ''")))
+    ))
+
+(defun gnuplot--draw-pie (m header labelcol datetime)
+  (if datetime (error "Date is not supported for piechart"))
+  (let* ((col (if labelcol "2" "1"))
+	 (rows (format "%d:%d" (if header 1 0)
+		       (- m 1 (if header 1 0))))
+	 (fmt1 "(sprintf('%s (%05.2f%%)', stringcolumn(1), percent($2)))")
+	 (fmt2 "(sprintf('%05.2f%%', percent($1)))"))
+    (insert "stats file using " col " nooutput prefix 'A'\n")
+    (insert "angle(x)  = x*360/A_sum\n")
+    (insert "percent(x)= x*100/A_sum\n")
+
+    (insert "centerX = 0\n")
+    (insert "centerY = 0\n")
+    (insert "radius  = 1\n")
+    (insert "pos     = 0\n")
+    (insert "colour  = 0\n")
+
+    (insert "yposmax = 0.95*radius\n")
+    (insert "xpos    = 1.5*radius\n")
+    (insert "ypos(i) = yposmax - i*(yposmax)/(1.0*A_records)\n")
+
+    (insert "set xrange [-2:2]\n")
+    (insert "set yrange [-2:2]\n")
+    (insert "unset key\n")
+    (insert "unset tics\n")
+    (insert "unset border\n")
+    
+    (insert "plot file using "
+    	    "(centerX):(centerY):(radius):(pos):(pos=pos+angle($"
+    	    col ")):(colour=colour+1) "
+    	    "with circle linecolor var notitle")
+    (insert "\\\n, for [i=" rows "] file using (xpos):(ypos(i)):"
+	    (if labelcol fmt1 fmt2)
+	    " every ::i::i with labels left offset 3,0")
+    (insert "\\\n, for [i=" rows "] '+' using (xpos):(ypos(i)) "
+	    "with points pointtype 5 pointsize 4 linecolor i+1\n")
+  ))
+
 (defun gnuplot--draw (&optional title style)
   (or killed-rectangle (error "No tabular data"))
   (let* ((name (make-temp-file "plot"))
@@ -115,9 +179,10 @@
          (pipe  (and (string-match-p "|" (car data)) "|"))
 	 (sep   (or comma pipe))
          (cols (split-string (car data) sep))
+	 (m (length data))
          (n (length cols))
 	 (str-check "^ *[a-zA-Z'\"]")
-         buf xlabel ylabel header j labelcol datetime)
+         buf xlabel ylabel header labelcol datetime)
     ;; Extract plot details
     ;; Column header
     (when (string-match-p str-check (car cols))
@@ -130,7 +195,7 @@
           (setq header cols
                 ;; style "histograms"
                 )
-          (pcase (length header)
+          (pcase n
             (1 (setq ylabel (nth 1 header)))
             (2 (setq xlabel (nth 0 header)
                      ylabel (nth 1 header)))
@@ -149,40 +214,27 @@
 
     (setq style (or style "line"))
     ;; (setq style (if labelcol "histograms"))
+    ;; (setq style "pie")
     (with-temp-buffer
-      (insert "unset xdata\n")
-      (insert "unset ydata\n")
-      (insert "unset xrange\n")
-      (insert "unset yrange\n")
-      (insert "unset format xy\n")
-      (insert "unset timefmt\n")
-      (insert "reset\n")
+      ;; (insert "unset xdata\n")
+      ;; (insert "unset ydata\n")
+      ;; (insert "unset xrange\n")
+      ;; (insert "unset yrange\n")
+      ;; (insert "unset format xy\n")
+      ;; (insert "unset timefmt\n")
+      ;; First \n is to flush any pending commands
+      (insert "\nreset\n")
 
       (insert "set datafile separator "
 	      (if sep (format "'%s'" sep) "whitespace") "\n")
       (insert "set style fill solid 0.5\n")
       (insert "set title  '" (or title  "Title")  "'\n")
-      (insert "set xlabel '" (or xlabel "x-axis") "'\n")
-      (insert "set ylabel '" (or ylabel "y-axis") "'\n")
-      (when datetime
-        (insert "set xdata time\n")
-        (insert "set format x \"" (if (< (length data) 10) "%d-" "") "%b-%y\"\n")
-        (insert "set timefmt \"" datetime "\"\n"))
-      (insert "plot '" name "'")
-      (setq j (if (or labelcol datetime (> n 1)) 1 0))
-      (dotimes (i (- n j))
-        (insert " using ")
-        (when (not (string= style "histograms"))
-          (insert (number-to-string
-                   (if (or labelcol (= n 1)) 0 1))
-                  ":"))
-        (insert (number-to-string (+ i j 1)))
-        (if (and labelcol (not datetime)) (insert ":xtic(1)"))
-        (if (< i n) (insert " with " style))
-        (if (> n 2)
-            (insert " title columnhead")
-          (insert " notitle"))
-        (if (< i (- n j 1)) (insert ", ''")))
+      (insert "file='" name "'\n")
+
+      (pcase style
+	("pie" (gnuplot--draw-pie m header labelcol datetime))
+	(_ (gnuplot--draw-line style m n xlabel ylabel labelcol datetime)))
+
       (newline)
       (gnuplot-mode)
       (gnuplot-send-buffer-to-gnuplot))
@@ -199,6 +251,7 @@
   (let ((styles '(("line" . "line")
 		  ("bar" . "histograms")
 		  ("scatter" . "circles")
+		  ("pie" . "pie")
 		  ))
 	title style)
     (when prefix
