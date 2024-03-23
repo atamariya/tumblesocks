@@ -29,6 +29,10 @@
 			  ("pie" . "pie")
 			  ("spider" . "spider")
 			  ))
+(defvar gnuplot--style-prev nil)
+(defvar gnuplot--timer nil)
+(defvar gnuplot--image-dir "~/Pictures/gplot")
+
 (defvar gnuplot--flag-day nil)
 (defvar gnuplot--flag-month nil)
 (defvar gnuplot--flag-year nil)
@@ -141,10 +145,10 @@
 (defun gnuplot--draw-pie (m header labelcol datetime)
   (if datetime (error "Date is not supported for piechart"))
   (let* ((col (if labelcol "2" "1"))
-	 (rows (format "%d:%d" (if header 1 0)
-		       (- m 1 (if header 1 0))))
+	 (rows (format "%d:%d" 0 (- m 1 (if header 1 0))))
 	 (fmt1 "(sprintf('%s (%05.2f%%)', stringcolumn(1), percent($2)))")
 	 (fmt2 "(sprintf('%05.2f%%', percent($1)))"))
+    (if header (insert "set datafile columnheaders\n"))
     (insert "stats file using " col " nooutput prefix 'A'\n")
     (insert "angle(x)  = x*360/A_sum\n")
     (insert "percent(x)= x*100/A_sum\n")
@@ -271,6 +275,19 @@
     ;; (delete-file name)
     ))
 
+(defun gnuplot--draw-preview ()
+  (let* ((style (get-text-property (point) 'gplot-style))
+	 (gnuplot-inline-image-mode 'inline))
+    (when (and (memq last-command '(left-char right-char previous-line next-line))
+	       (not (string= gnuplot--style-prev style)))
+      (setq gnuplot--style-prev style)
+      (gnuplot--draw nil style))
+    ))
+
+(defun gnuplot--timer-activate ()
+  (if gnuplot--timer (cancel-timer gnuplot--timer))
+  (setq gnuplot--timer (run-with-idle-timer 1 nil 'gnuplot--draw-preview)))
+
 ;; styles lines, points, linespoints, impulses, dots, steps, errorbars (or
 ;; yerrorbars), xerrorbars, xyerrorbars, boxes, boxerrorbars, boxxyerrorbars
 ;;;###autoload
@@ -283,6 +300,31 @@
       (setq style (cdr (assoc (completing-read "Style: " styles) styles)))
       )
     (gnuplot--draw title style)))
+
+;;;###autoload
+(defun gnuplot-preview ()
+  (interactive)
+  (let ((styles gnuplot--styles)
+	(icon (file-exists-p gnuplot--image-dir))
+	(buf (get-buffer-create "*gnuplot options*")))
+    (with-current-buffer buf
+      (view-mode -1)
+      (erase-buffer)
+      (cursor-intangible-mode 1)
+      (add-hook 'post-command-hook 'gnuplot--timer-activate nil t)
+      (dolist (i styles)
+	(insert (propertize (car i)
+			    'cursor-intangible t
+			    'display (if icon (create-image
+					       (format "%s/gplot_%s.png"
+						       gnuplot--image-dir (car i))))
+			    'gplot-style (cdr i)
+			    )
+		" "))
+      (view-mode 1))
+    
+    (pop-to-buffer buf t t)
+    ))
 
 
 (provide 'graph)
