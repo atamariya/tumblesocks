@@ -27,6 +27,9 @@
 			  ("bar" . "histograms")
 			  ("scatter" . "circles")
 			  ("pie" . "pie")
+			  ("half pie" . "pie_half")
+			  ("donut" . "donut")
+			  ("half donut" . "donut_half")
 			  ("spider" . "spider")
 			  ))
 (defvar gnuplot--style-prev nil)
@@ -142,7 +145,7 @@
       (if (< i (- n j 1)) (insert ", ''")))
     ))
 
-(defun gnuplot--draw-pie (m header labelcol datetime)
+(defun gnuplot--draw-pie (m header labelcol datetime N &optional donut)
   (if datetime (error "Date is not supported for piechart"))
   (let* ((col (if labelcol "2" "1"))
 	 (rows (format "%d:%d" 0 (- m 1 (if header 1 0))))
@@ -150,7 +153,8 @@
 	 (fmt2 "(sprintf('%05.2f%%', percent($1)))"))
     (if header (insert "set datafile columnheaders\n"))
     (insert "stats file using " col " nooutput prefix 'A'\n")
-    (insert "angle(x)  = x*360/A_sum\n")
+    (insert "N         = " (number-to-string N) "\n")
+    (insert "angle(x)  = x*N*180/A_sum\n")
     (insert "percent(x)= x*100/A_sum\n")
 
     (insert "centerX = 0\n")
@@ -163,8 +167,8 @@
     (insert "xpos    = 1.5*radius\n")
     (insert "ypos(i) = yposmax - i*(yposmax)/(1.0*A_records)\n")
 
-    (insert "set xrange [-2:2]\n")
-    (insert "set yrange [-2:2]\n")
+    (insert "set xrange [-N:2]\n")
+    (insert "set yrange [-N:2]\n")
     (insert "unset key\n")
     (insert "unset tics\n")
     (insert "unset border\n")
@@ -173,6 +177,10 @@
     	    "(centerX):(centerY):(radius):(pos):(pos=pos+angle($"
     	    col ")):(colour=colour+1) "
     	    "with circle linecolor var notitle")
+    (if donut
+	(insert "\\\n, '' using "
+    		"(centerX):(centerY):(0.5) "
+    		"with circle linecolor 'white' notitle"))
     (insert "\\\n, for [i=" rows "] file using (xpos):(ypos(i)):"
 	    (if labelcol fmt1 fmt2)
 	    " every ::i::i with labels left offset 3,0")
@@ -262,7 +270,10 @@
       (insert "file='" name "'\n")
 
       (pcase style
-	("pie" (gnuplot--draw-pie m header labelcol datetime))
+	("pie" (gnuplot--draw-pie m header labelcol datetime 2))
+	("pie_half" (gnuplot--draw-pie m header labelcol datetime 1))
+	("donut" (gnuplot--draw-pie m header labelcol datetime 2 t))
+	("donut_half" (gnuplot--draw-pie m header labelcol datetime 1 t))
 	("spider" (gnuplot--draw-spider n header labelcol))
 	(_ (gnuplot--draw-line style m n xlabel ylabel labelcol datetime)))
 
