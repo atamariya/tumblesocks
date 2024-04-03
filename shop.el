@@ -107,16 +107,17 @@
 
 (defvar shop--jio-cart "421051364")
 (defun shop--api-add-jio (item)
-  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/add_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id=%s"
+  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/add_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id="
 		      item shop--jio-cart))
 	 (res (shop--api-request-jio url)))
     (if (not (string= (json-resolve "status" res t) "success"))
-	(error (json-resolve "message" res t)))
+	(error (or (json-resolve "message" res t)
+		   (json-resolve "reason.reason_eng" res t))))
     ;; (json-serialize res)
     res))
 
 (defun shop--api-remove-jio (item)
-  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/remove_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id=%s"
+  (let* ((url (format "https://www.jiomart.com/mst/rest/v1/5/cart/remove_item?product_code=%s&qty=1&seller_id=1&n=1703240024017&cart_id="
 		      item shop--jio-cart))
 	 (res (shop--api-request-jio url)))
     (if (not (string= (json-resolve "status" res t) "success"))
