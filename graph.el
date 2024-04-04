@@ -56,7 +56,7 @@
          (sep   (or dash slash))
          (tokens1 (split-string datetime sep))
          (tokens2 (split-string datetime1 sep))
-         res tokens3 out)
+         res tokens3 out i)
     (when (or sep time)
       (setq gnuplot--flag-day nil
 	    gnuplot--flag-month nil
