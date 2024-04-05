@@ -52,10 +52,15 @@
       )))
 
 (defun graph-pack--intersects (a b)
-  (let* ((dr (+ (point-r a) (point-r b) -1e-3))
+  (let* ((dr (+ (point-r a) (point-r b)))
 	 (dx (- (point-x b) (point-x a)))
 	 (dy (- (point-y b) (point-y a))))
-    (> (* dr dr) (+ (* dx dx) (* dy dy)))))
+    (and (> dr 0) (> (* dr dr) (+ (* dx dx) (* dy dy))))))
+
+(defun graph-pack--distance (a b)
+  (let* ((dx (- (point-x b) (point-x a)))
+	 (dy (- (point-y b) (point-y a))))
+    (sqrt (+ (* dx dx) (* dy dy)))))
 
 (defun graph-pack--score (a b)
   ;; b = a.next
@@ -68,41 +73,88 @@
     ;; distance squared from origin to weighted center
     (+ (* dx dx) (* dy dy))))
 
-(defun graph-pack-enclose (pos)
+(defun graph-pack-enclose (pos &optional image)
   (let* ((n (length pos))
 	 (a (pop pos))
 	 (b (pop pos))
 	 (c (pop pos))
-	 enc count)
-    ;; place the first circle
-    (setf (point-x a) 0)    
-    (setf (point-y a) 0)
-    (setq enc (point-r a))
+	 (enc 0)
+	 (j 0)
+	 count front done)
+    (when (> n 0)
+      ;; place the first circle
+      (setf (point-x a) 0)    
+      (setf (point-y a) 0)
+      (setq enc (point-r a))
 
-    ;; place second circle
-    (when b
-      (setf (point-x a) (- (point-r b)))    
-      (setf (point-x b) (point-r a))
-      (setf (point-y b) 0)
-      ;; enclosing circle has radius of sum of the 2 radii
-      (setq enc (+ (point-r a) (point-r b))))
+      ;; place second circle
+      (when b
+	(setf (point-x a) (- (point-r b)))    
+	(setf (point-x b) (point-r a))
+	(setf (point-y b) 0)
+	;; enclosing circle has radius of sum of the 2 radii
+	(setq enc (+ (point-r a) (point-r b))))
 
-    (when c
-      ;; place third circle
-      ;; b is second circle, a is first, c is third
-      (graph-pack--place b a c)
+      (when c
+	;; place third circle
+	;; b is second circle, a is first, c is third
+	(graph-pack--place b a c)
+	;; (graph-pack--place a b c)
+	(message "1 Scores: %s %s %s" a b c)
+	(message "Scores: %s %s %s"
+		   (graph-pack--score a b)
+		   (graph-pack--score c b)
+		   (graph-pack--score a c))
 
-      ;; initialize front-chain using the first 3 circles
-      
-      ;; place each circle in turn
-      (dolist (p pos)
-	(setq count 0)
-	(while (> (setq count (1+ count))
-		  (* 2 n))
-	  ;; attempt to place
-	  (graph-pack--place b a p)	
-
-          ;; check if where we added c intersects any circles in the front-chain
+	(sit-for 2)
+	;; place each circle in turn
+	(dolist (p pos)
+	  ;; initialize front-chain using the first 3 circles
+	  (setq count 0
+		j (1+ j)
+		done nil
+		f a g b
+		front (list a b c))
+	  (message "Placing %d: %s" (- (length pos) j) p)
+	  (while (and (not done)
+		      front
+		      ;; (< (setq count (1+ count)) n)
+		      )
+	    ;; attempt to place
+	    (graph-pack--place b c p)	
+	    (when image
+	      (setq m 0)
+	      (dolist (i svg--bubble-points)
+		(setq m (1+ m)
+		      node (svg-circle image (point-x i) (point-y i) (point-r i)
+				       :fill (point-vel-x i)
+				       :id m)))
+	      (svg-possibly-update-image image)
+	      (sit-for .1))
+	    
+            ;; check if where we added c intersects any circles in the front-chain
+	    (message "1 %s\n%s\n%s\n%s %s" b c p a (graph-pack--intersects p a))
+	    (if (graph-pack--intersects p a)
+		(setq b c c (pop front) a (car front))
+	      (setq done t))
+	    )
+	  (message "2 %s\n%s\n%s\n%s" a b c p)
+	  (message "Scores: %s %s %s %s %s"
+		   (graph-pack--score b p)
+		   (graph-pack--score p c)
+		   (and a (graph-pack--score a b))
+		   (graph-pack--score c b)
+		   (and a (graph-pack--score a c)))
+	  (if (and a (< (graph-pack--score b p) (graph-pack--score p c)))
+	      (setq c p) ;; swap a and c
+	    (setq b p)
+	    )
+	  (message "3 %s\n%s\n%s\n%s" a b c p)
+	  (unless front
+	    (if (> (graph-pack--distance c f) (graph-pack--distance c g))
+		(setq a f)
+	      (setq a g)
+	      ))
 	  )))
     enc))
 
