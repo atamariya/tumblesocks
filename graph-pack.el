@@ -37,19 +37,19 @@
 	  ;; place circle c 
 	  (if (> a2 b2)
 	      (progn
-		(setq x (/ (+ d2 b2 (- a2)) (* 2 d2))
-		      y (sqrt (max 0 (- (/ b2 d2) (* x x)))))
-		(setf (point-x c) (- (point-x b) (* x dx) (* y dx))) 
-		(setf (point-y c) (- (point-y b) (* x dx) (* y dx -1))))
-	    (setq x (/ (+ d2 a2 (- b2)) (* 2 d2))
-		  y (sqrt (max 0 (- (/ a2 d2) (* x x)))))
-	    (setf (point-x c) (- (point-x a) (* x dx) (* y dx -1))) 
-	    (setf (point-y c) (- (point-y a) (* x dx) (* y dx)))))
+		(setq x (/ (+ d2 b2 (- a2)) (* 2.0 d2))
+		      y (sqrt (max 0 (- (/ b2 d2 1.0) (* x x)))))
+		(setf (point-x c) (- (point-x b) (* x dx) (* y dy))) 
+		(setf (point-y c) (- (point-y b) (* x dy) (* y dx -1))))
+	    (setq x (/ (+ d2 a2 (- b2)) (* 2.0 d2))
+		  y (sqrt (max 0 (- (/ a2 d2 1.0) (* x x)))))
+	    (setf (point-x c) (+ (point-x a) (* x dx) (* y dy -1))) 
+	    (setf (point-y c) (+ (point-y a) (* x dy) (* y dx)))))
 
-        ;; if b and a are the same point just put c somewhere sensible
-	    (setf (point-x c) (+ (point-x a) (point-r a) (point-y c))) 
-	    (setf (point-y c) (point-y a))      
-	  )))
+      ;; if b and a are the same point just put c somewhere sensible
+      (setf (point-x c) (+ (point-x a) (point-r a) (point-r c))) 
+      (setf (point-y c) (point-y a))      
+      )))
 
 (defun graph-pack--intersects (a b)
   (let* ((dr (+ (point-r a) (point-r b) -1e-3))
@@ -60,7 +60,7 @@
 (defun graph-pack--score (a b)
   ;; b = a.next
   ;; weighted position (weighed based on rad)
-  (let* ((ab (+ (point-r a) (point-r b)))
+  (let* ((ab (+ (point-r a) (point-r b) 0.0))
 	 (dx (/ (+ (* (point-x a) (point-r b))
 		   (* (point-x b) (point-r a))) ab))
 	 (dy (/ (+ (* (point-y a) (point-r b))
@@ -83,7 +83,7 @@
     (when b
       (setf (point-x a) (- (point-r b)))    
       (setf (point-x b) (point-r a))
-      (setf (point-r b) 0)
+      (setf (point-y b) 0)
       ;; enclosing circle has radius of sum of the 2 radii
       (setq enc (+ (point-r a) (point-r b))))
 
@@ -104,7 +104,7 @@
 
           ;; check if where we added c intersects any circles in the front-chain
 	  )))
-      enc))
+    enc))
 
 ;; (defun graph-pack--intersects (a b)
 ;;   (let* ()
