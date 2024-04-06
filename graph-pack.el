@@ -52,7 +52,7 @@
       )))
 
 (defun graph-pack--intersects (a b)
-  (let* ((dr (+ (point-r a) (point-r b)))
+  (let* ((dr (+ (point-r a) (point-r b) -1e-3))
 	 (dx (- (point-x b) (point-x a)))
 	 (dy (- (point-y b) (point-y a))))
     (and (> dr 0) (> (* dr dr) (+ (* dx dx) (* dy dy))))))
@@ -80,7 +80,7 @@
 	 (c (pop pos))
 	 (enc 0)
 	 (j 0)
-	 count front done)
+	 p front done)
     (when (> n 0)
       ;; place the first circle
       (setf (point-x a) 0)    
@@ -106,57 +106,66 @@
 		   (graph-pack--score c b)
 		   (graph-pack--score a c))
 
-	(sit-for 2)
+	;; initialize front-chain using the first 3 circles
+	(setq front (list b a c) restart t)
+	;; (setq front (list c b a) restart t)
+
 	;; place each circle in turn
-	(dolist (p pos)
-	  ;; initialize front-chain using the first 3 circles
-	  (setq count 0
-		j (1+ j)
-		done nil
-		f a g b
-		front (list a b c))
-	  (message "Placing %d: %s" (- (length pos) j) p)
-	  (while (and (not done)
-		      front
-		      ;; (< (setq count (1+ count)) n)
-		      )
-	    ;; attempt to place
-	    (graph-pack--place b c p)	
-	    (when image
-	      (setq m 0)
-	      (dolist (i svg--bubble-points)
-		(setq m (1+ m)
-		      node (svg-circle image (point-x i) (point-y i) (point-r i)
-				       :fill (point-vel-x i)
-				       :id m)))
-	      (svg-possibly-update-image image)
-	      (sit-for .1))
-	    
-            ;; check if where we added c intersects any circles in the front-chain
-	    (message "1 %s\n%s\n%s\n%s %s" b c p a (graph-pack--intersects p a))
-	    (if (graph-pack--intersects p a)
-		(setq b c c (pop front) a (car front))
-	      (setq done t))
-	    )
-	  (message "2 %s\n%s\n%s\n%s" a b c p)
-	  (message "Scores: %s %s %s %s %s"
-		   (graph-pack--score b p)
-		   (graph-pack--score p c)
-		   (and a (graph-pack--score a b))
-		   (graph-pack--score c b)
-		   (and a (graph-pack--score a c)))
-	  (if (and a (< (graph-pack--score b p) (graph-pack--score p c)))
-	      (setq c p) ;; swap a and c
-	    (setq b p)
-	    )
-	  (message "3 %s\n%s\n%s\n%s" a b c p)
-	  (unless front
-	    (if (> (graph-pack--distance c f) (graph-pack--distance c g))
-		(setq a f)
-	      (setq a g)
-	      ))
+	(while (setq p (car pos))
+	  (catch 'restart
+	    (setq j (1+ j)
+		  done nil
+		  c (pop front)
+		  b (car front))
+	    (message "Placing %d: %s" j p)
+	    (while (not done)
+	      ;; attempt to place
+	      (graph-pack--place b c p)
+	      (gdraw image)
+	      
+              ;; check if where we added c intersects any circles in the front-chain
+	      ;; (message "1 %s\n%s\n%s\n%s %s" b c p a (graph-pack--intersects p a))
+	      (if (graph-pack--intersects p a)
+		  (progn
+		    (throw 'restart "restarting")
+		    ;; (error "hit")
+		    )
+		(setq front (append (list c p) front))
+		(setq done t))
+	      )
+	    (pop pos)
+	    (pp front))
+	  ;; (message "2 %s\n%s\n%s\n%s" a b c p)
+	  ;; (message "Scores: %s %s %s %s %s"
+	  ;; 	   (graph-pack--score b p)
+	  ;; 	   (graph-pack--score p c)
+	  ;; 	   (and a (graph-pack--score a b))
+	  ;; 	   (graph-pack--score b c)
+	  ;; 	   (and a (graph-pack--score a c)))
+	  ;; (if (and a (< (graph-pack--score b p) (graph-pack--score p c)))
+	  ;;     (setq c p) ;; swap a and c
+	  ;;   (setq b p)
+	  ;;   )
+	  ;; (message "3 %s\n%s\n%s\n%s" a b c p)
+	  ;; (unless front
+	  ;;   (if (> (graph-pack--distance c f) (graph-pack--distance c g))
+	  ;; 	(setq a f)
+	  ;;     (setq a g)
+	  ;;     ))
 	  )))
     enc))
+(defun gdraw (image)
+  ""
+  (when image
+    (setq m 0)
+    (dolist (i svg--bubble-points)
+      (setq m (1+ m)
+	    node (svg-circle image (point-x i) (point-y i) (point-r i)
+			     :fill (point-vel-x i)
+			     :id m)))
+    (svg-possibly-update-image image)
+    (sit-for 1))
+  )
 
 ;; (defun graph-pack--intersects (a b)
 ;;   (let* ()
