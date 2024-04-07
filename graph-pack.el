@@ -77,7 +77,8 @@
   (let* ((n (length pos))
 	 (a (pop pos))
 	 (b (pop pos))
-	 (c (pop pos))
+	 ;; (c (pop pos))
+	 (c (car pos))
 	 (enc 0)
 	 (j 0)
 	 p front done)
@@ -98,7 +99,7 @@
       (when c
 	;; place third circle
 	;; b is second circle, a is first, c is third
-	(graph-pack--place b a c)
+	;; (graph-pack--place b a c)
 	;; (graph-pack--place a b c)
 	(message "1 Scores: %s %s %s" a b c)
 	(message "Scores: %s %s %s"
@@ -107,21 +108,20 @@
 		   (graph-pack--score a c))
 
 	;; initialize front-chain using the first 3 circles
-	(setq front (list b a c) restart t)
+	(setq front (list b a) restart t)
 	;; (setq front (list c b a) restart t)
 
 	;; place each circle in turn
 	(while (setq p (car pos))
 	  (catch 'restart
-	    (setq j (1+ j)
-		  done nil
+	    (setq done nil
 		  c (pop front)
 		  b (car front))
 	    (message "Placing %d: %s" j p)
 	    (while (not done)
 	      ;; attempt to place
 	      (graph-pack--place b c p)
-	      (gdraw image)
+	      (graph-pack--draw image (append (list c p) front))
 	      
               ;; check if where we added c intersects any circles in the front-chain
 	      ;; (message "1 %s\n%s\n%s\n%s %s" b c p a (graph-pack--intersects p a))
@@ -134,6 +134,7 @@
 		(setq done t))
 	      )
 	    (pop pos)
+	    (setq j (1+ j))
 	    (pp front))
 	  ;; (message "2 %s\n%s\n%s\n%s" a b c p)
 	  ;; (message "Scores: %s %s %s %s %s"
@@ -154,18 +155,31 @@
 	  ;;     ))
 	  )))
     enc))
-(defun gdraw (image)
+
+(defun graph-pack--draw (image front)
   ""
-  (when image
-    (setq m 0)
-    (dolist (i svg--bubble-points)
+  (let* ((m 0)
+	 (n (length front))
+	 p1 p2)
+    (when image
+      (dolist (i svg--bubble-points)
+	(setq m (1+ m))
+	(svg-circle image (point-x i) (point-y i) (point-r i)
+		    :fill (point-vel-x i)
+		    :id m)))
+    (dotimes (i n)
       (setq m (1+ m)
-	    node (svg-circle image (point-x i) (point-y i) (point-r i)
-			     :fill (point-vel-x i)
-			     :id m)))
+	    p1 (nth i front)
+	    p2 (nth (if (< (1+ i) n) (1+ i) 0) front))
+      (svg-line image
+		(point-x p1) (point-y p1)
+		(point-x p2) (point-y p2)
+		:style "stroke:red;stroke-width:2"
+		:id m))
+
     (svg-possibly-update-image image)
-    (sit-for 1))
-  )
+    (sit-for 1)
+    ))
 
 ;; (defun graph-pack--intersects (a b)
 ;;   (let* ()
