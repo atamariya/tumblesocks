@@ -75,6 +75,7 @@
 
 (defun graph-pack-enclose (pos &optional image)
   (let* ((n (length pos))
+	 (points pos)
 	 (a (pop pos))
 	 (b (pop pos))
 	 ;; (c (pop pos))
@@ -121,7 +122,7 @@
 	    (while (not done)
 	      ;; attempt to place
 	      (graph-pack--place b c p)
-	      (graph-pack--draw image (append (list c p) front))
+	      (graph-pack--draw image points (append (list c p) front))
 	      
               ;; check if where we added c intersects any circles in the front-chain
 	      ;; (message "1 %s\n%s\n%s\n%s %s" b c p a (graph-pack--intersects p a))
@@ -156,25 +157,28 @@
 	  )))
     enc))
 
-(defun graph-pack--draw (image front)
+(defun graph-pack--draw (image circles lines)
   ""
   (let* ((m 0)
-	 (n (length front))
+	 (n (length lines))
 	 p1 p2)
     (when image
-      (dolist (i svg--bubble-points)
+      (dolist (i circles)
 	(setq m (1+ m))
+	(svg-text image (number-to-string m) :x (point-x i) :y (point-y i)
+		  :id (+ (* 10 n) m))
 	(svg-circle image (point-x i) (point-y i) (point-r i)
 		    :fill (point-vel-x i)
 		    :id m)))
     (dotimes (i n)
       (setq m (1+ m)
-	    p1 (nth i front)
-	    p2 (nth (if (< (1+ i) n) (1+ i) 0) front))
+	    p1 (nth i lines)
+	    p2 (nth (if (< (1+ i) n) (1+ i) 0) lines))
       (svg-line image
 		(point-x p1) (point-y p1)
 		(point-x p2) (point-y p2)
-		:style "stroke:red;stroke-width:2"
+		:style (concat "stroke:" (if (= (1+ i) n) "green" "red")
+			       ";stroke-width:2")
 		:id m))
 
     (svg-possibly-update-image image)
