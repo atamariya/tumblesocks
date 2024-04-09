@@ -78,11 +78,11 @@
 	 (points pos)
 	 (a (pop pos))
 	 (b (pop pos))
-	 ;; (c (pop pos))
-	 (c (car pos))
+	 (c (pop pos))
+	 ;; (c (car pos))
 	 (enc 0)
 	 (j 0)
-	 p front done)
+	 p front l done)
     (when (> n 0)
       ;; place the first circle
       (setf (point-x a) 0)    
@@ -100,17 +100,18 @@
       (when c
 	;; place third circle
 	;; b is second circle, a is first, c is third
-	;; (graph-pack--place b a c)
+	(graph-pack--place b a c)
 	;; (graph-pack--place a b c)
-	(message "1 Scores: %s %s %s" a b c)
-	(message "Scores: %s %s %s"
-		   (graph-pack--score a b)
-		   (graph-pack--score c b)
-		   (graph-pack--score a c))
+	;; (message "1 Scores: %s %s %s" a b c)
+	;; (message "Scores: %s %s %s"
+	;; 	   (graph-pack--score a b)
+	;; 	   (graph-pack--score c b)
+	;; 	   (graph-pack--score a c))
 
 	;; initialize front-chain using the first 3 circles
-	(setq front (list b a) restart t)
-	;; (setq front (list c b a) restart t)
+	;; (setq front (list b a) restart t)
+	(setq front (list c b a) restart t)
+	(setq l (* 2 (point-r b)) d a)
 
 	;; place each circle in turn
 	(while (setq p (car pos))
@@ -118,25 +119,54 @@
 	    (setq done nil
 		  c (pop front)
 		  b (car front))
-	    (message "Placing %d: %s" j p)
 	    (while (not done)
+	      ;; If the length of front chain is longer with point a
+	      ;; than without, we drop point a
+	      ;; l is length without ends
+	      ;; (if (and d (< (graph-pack--distance c d)
+	      ;; 		    (+ (point-r c) (point-r d) (* 2 (point-r a))))
+	      ;; 	       ;; (> (+ l (* 2 (point-r a))) (+ l (point-r c) (point-r d)))
+	      ;; 	       )
+	      ;; 	  (progn
+	      ;; 	    (setq front (butlast front) a d)
+	      ;; 	    (setq d (nth (- (length front) 2) front))
+	      ;; 	    (throw 'restart "restarting"))
+	      ;; 	(setq d b))
 	      ;; attempt to place
-	      (graph-pack--place b c p)
-	      (graph-pack--draw image points (append (list c p) front))
+	      (graph-pack--place c a p)
+	      (message "Placing %d: %s" j p)
+
+	      ;; (message "angle: %.2f %.2f %.2f %.2f %.2f %.2f"
+	      ;; 	       (graph-angle p c) (graph-angle c p)
+	      ;; 	       (graph-angle p b) (graph-angle c b)
+	      ;; 	       ;; (graph-angle b c) (graph-angle c b)
+	      ;; 	       (graph-angle c a) (graph-angle a c))
 	      
               ;; check if where we added c intersects any circles in the front-chain
 	      ;; (message "1 %s\n%s\n%s\n%s %s" b c p a (graph-pack--intersects p a))
-	      (if (graph-pack--intersects p a)
+	      (if (and (graph-pack--intersects p d)
+		       ;; angle BCA > 0
+		       ;; (< (abs (- (graph-angle p c) (graph-angle a c))) 0)
+		       )
 		  (progn
-		    (throw 'restart "restarting")
-		    ;; (error "hit")
-		    )
-		(setq front (append (list c p) front))
+		    (push c front)
+		    (setq front (butlast front) a d)
+		    (throw 'restart "restarting"))
+
+		(setq front (append (list p c) front))
 		(setq done t))
+	      ;; (message "Scores: %s %s"
+	      ;; 	       (graph-pack--score b c)
+	      ;; 	       (graph-pack--score a c))
+
+	      (graph-pack--draw image points front)
+	      ;; (graph-pack--draw image points (append (list c) front))
 	      )
 	    (pop pos)
+	    (setq d (nth (- (length front) 2) front))		
 	    (setq j (1+ j))
-	    (pp front))
+	    ;; (pp front)
+	    )
 	  ;; (message "2 %s\n%s\n%s\n%s" a b c p)
 	  ;; (message "Scores: %s %s %s %s %s"
 	  ;; 	   (graph-pack--score b p)
@@ -156,6 +186,12 @@
 	  ;;     ))
 	  )))
     enc))
+(defun graph-angle (b c)
+  "Angle between line BC and x-axis.
+Value is between 0 to 2*PI."
+  (let* ((angle (atan (- (point-y b) (point-y c))
+		      (- (point-x b) (point-x c)))))
+    (if (> angle 0) angle (+ (* 2 float-pi) angle))))
 
 (defun graph-pack--draw (image circles lines)
   ""
