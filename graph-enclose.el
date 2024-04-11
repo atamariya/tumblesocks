@@ -88,8 +88,8 @@
 	 (A  (- (* xb xb) (* yb yb) 1))
 	 (B  (* 2 (+ r1 (* xa xb) (* ya yb))))
 	 (C  (+ (* xa xa) (* ya ya) (- (* r1 r1))))
-	 (r  (- (if (> (abs A) 1e-6)
-		    (/ (+ B (sqrt (- (* B B) (* 4 A C))) (* 2.0 A)))
+	 (r  (- (if (> (abs A) 0)
+		    (/ (+ B (sqrt (- (* B B) (* 4 A C)))) (* 2.0 A))
 		  (/ C B 1.0)))))
     (make-point :x (+ x1 xa (* xb r))
 		:y (+ y1 ya (* yb r))
@@ -104,18 +104,20 @@
     ))
 
 (defun graph-enclose--extend (arr p)
-  (let* (res i)
-    (if (graph-enclose--weak-all p arr) (setq res (list p)))
-    
-    (while (and (not res) (setq i (pop arr)))
-      (if (and (graph-enclose--not p i)
-	       (graph-enclose--weak-all (graph-enclose-2 i p) arr))
-	  (setq res (list i p))))
-
+  (let* (res)
     (catch 'done
+      (when (graph-enclose--weak-all p arr)
+	(setq res (list p))
+	(throw 'done "Done"))
+      
       (dolist (i arr)
-	(pop arr)
-	(dolist (j arr)
+	(when (and (graph-enclose--not p i)
+		   (graph-enclose--weak-all (graph-enclose-2 i p) arr))
+	  (setq res (list i p))
+	  (throw 'done "Done")))
+
+      (dolist (i arr)
+	(dolist (j (cdr arr))
 	  (when (and (graph-enclose--not (graph-enclose-2 i j) p)
 		     (graph-enclose--not (graph-enclose-2 i p) j)
 		     (graph-enclose--not (graph-enclose-2 j p) i)
