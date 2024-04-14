@@ -57,7 +57,8 @@
 	 (dy (- (point-y b) (point-y a))))
     (and (> dr 0) (> (* dr dr) (+ (* dx dx) (* dy dy))))))
 
-(defun graph-pack-enclose (pos &optional image)
+;;;###autoload
+(defun graph-pack (pos &optional image)
   (let* ((n (length pos))
 	 (points pos)
 	 (a (pop pos))
@@ -99,13 +100,12 @@
 	    (while (not done)
 	      ;; attempt to place
 	      (graph-pack--place c a p)
-	      (message "Placing %d: %s" j p)
+	      ;; (message "Placing %d: %s" j p)
 
               ;; check if where we added c intersects any circles in the front-chain
-	      ;; (message "1 %s\n%s\n%s\n%s %s" b c p a (graph-pack--intersects p a))
-	      (if (and (graph-pack--intersects p d)
-		       )
+	      (if (graph-pack--intersects p d)
 		  (progn
+		    ;; (message "1 %s\n%s\n%s\n%s\n%s" b c p a d)
 		    (push c front)
 		    (setq front (butlast front) a d)
 		    (setq d (nth (- (length front) 2) front))		
@@ -119,9 +119,11 @@
 	    (pop pos)
 	    (setq d (nth (- (length front) 2) front))		
 	    (setq j (1+ j))
-	    (pp front)
-	    )
-	  )))
+	    ;; (pp front)
+	    ))
+	;; Possibly move to origin
+	;; (setq enc (graph-enclose front))
+	))
     enc))
 
 (defun graph-pack--draw (image circles lines)
