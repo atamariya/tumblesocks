@@ -19,6 +19,8 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+(require 'graph-draw)
+(require 'graph-enclose)
 
 (defun graph-pack--place (b a c)
   (let* ((dx (- (point-x b) (point-x a)))
@@ -122,37 +124,59 @@
 	    ;; (pp front)
 	    ))
 	;; Possibly move to origin
-	;; (setq enc (graph-enclose front))
+	(setq enc (point-r (graph-enclose front)))
 	))
     enc))
 
-(defun graph-pack--draw (image circles lines)
-  ""
+(defun graph-pack--draw1 (image circles lines)
+  "Draw circle packing with radial lines."
   (let* ((m 0)
-	 (n (length lines))
+	 (graph-draw--index 0)
+	 (graph-draw-padding 10)
+	 p1 p2)
+    (when image
+      (setq graph-draw-fill "red")
+      (setq p1 (car circles)
+	    p2 (graph-draw-lines-radial image p1 lines))
+      (setq graph-draw-fill "green")
+      (graph-draw-line image p1 p2)
+
+      (dolist (i circles)
+	(setq m (1+ m))
+	(setq graph-draw-fill (point-vel-x i))
+	(graph-draw-circle image i)
+	(svg-text image (number-to-string m) :x (point-x i) :y (point-y i)
+		  :id graph-draw--index)
+	(setq graph-draw--index (1+ graph-draw--index)))
+
+      (svg-possibly-update-image image)
+      (sit-for .1)
+      )))
+
+(defun graph-pack--draw (image circles lines)
+  "Draw circle packing with front chain."
+  (let* ((m 0)
+	 (graph-draw--index 0)
+	 (graph-draw-padding 10)
 	 p1 p2)
     (when image
       (dolist (i circles)
 	(setq m (1+ m))
+	(setq graph-draw-fill (point-vel-x i))
+	(graph-draw-circle image i)
 	(svg-text image (number-to-string m) :x (point-x i) :y (point-y i)
-		  :id (+ (* 10 n) m))
-	(svg-circle image (point-x i) (point-y i) (point-r i)
-		    :fill (point-vel-x i)
-		    :id m)))
-    (dotimes (i n)
-      (setq m (1+ m)
-	    p1 (nth i lines)
-	    p2 (nth (if (< (1+ i) n) (1+ i) 0) lines))
-      (svg-line image
-		(point-x p1) (point-y p1)
-		(point-x p2) (point-y p2)
-		:style (concat "stroke:" (if (= (1+ i) n) "green" "red")
-			       ";stroke-width:2")
-		:id m))
+		  :id graph-draw--index)
+	(setq graph-draw--index (1+ graph-draw--index)))
 
-    (svg-possibly-update-image image)
-    (sit-for .01)
-    ))
+      (setq graph-draw-fill "red")
+      (setq p1 (car lines)
+	    p2 (graph-draw-lines-chain image lines))
+      (setq graph-draw-fill "green")
+      (graph-draw-line image p1 p2)
+
+      (svg-possibly-update-image image)
+      (sit-for .1)
+      )))
 
 
 (provide 'graph-pack)
