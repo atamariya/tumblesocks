@@ -132,7 +132,6 @@
   "Draw circle packing with radial lines."
   (let* ((m 0)
 	 (graph-draw--index 0)
-	 (graph-draw-padding 10)
 	 p1 p2)
     (when image
       (setq graph-draw-fill "red")
@@ -143,7 +142,7 @@
 
       (dolist (i circles)
 	(setq m (1+ m))
-	(setq graph-draw-fill (point-vel-x i))
+	(setq graph-draw-fill (point-fill i))
 	(graph-draw-circle image i)
 	(svg-text image (number-to-string m) :x (point-x i) :y (point-y i)
 		  :id graph-draw--index)
@@ -157,12 +156,11 @@
   "Draw circle packing with front chain."
   (let* ((m 0)
 	 (graph-draw--index 0)
-	 (graph-draw-padding 10)
 	 p1 p2)
     (when image
       (dolist (i circles)
 	(setq m (1+ m))
-	(setq graph-draw-fill (point-vel-x i))
+	(setq graph-draw-fill (point-fill i))
 	(graph-draw-circle image i)
 	(svg-text image (number-to-string m) :x (point-x i) :y (point-y i)
 		  :id graph-draw--index)

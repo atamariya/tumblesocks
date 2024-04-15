@@ -31,14 +31,21 @@
 	      :id graph-draw--index)
   (setq graph-draw--index (1+ graph-draw--index)))
 
-(defun graph-draw-line (image p1 p2)
-  (svg-line image
-	    (point-x p1) (point-y p1)
-	    (point-x p2) (point-y p2)
-	    :stroke graph-draw-fill
-	    :stroke-width 2
-	    :id graph-draw--index)
+(defun graph-draw-rect (image p)
+  (svg-rectangle image (point-x p) (point-y p) (point-width p) (point-height p)
+		 :fill graph-draw-fill
+		 :id graph-draw--index)
   (setq graph-draw--index (1+ graph-draw--index)))
+
+(defun graph-draw-line (image p1 p2)
+  (when (and p1 p2)
+    (svg-line image
+	      (point-x p1) (point-y p1)
+	      (point-x p2) (point-y p2)
+	      :stroke graph-draw-fill
+	      :stroke-width 2
+	      :id graph-draw--index)
+    (setq graph-draw--index (1+ graph-draw--index))))
 
 (defun graph-draw-lines-chain (image lines)
   (let* (p)
@@ -51,6 +58,76 @@
     (while (and (setq p (pop lines)) lines)
       (graph-draw-line image center p))
     p))
+
+(defun graph-pack--place1 (b a c)
+  (let* ((ax1 (point-x a))
+	 (ay1 (point-y a))
+	 (ax2 (+ (point-x a) (point-width a)))
+	 ;; (ay2 (+ (point-y a) (point-height a)))
+	 (ah  (point-height a))
+	 (bx1 (point-x b))
+	 (by1 (point-y b))
+	 (bx2 (+ (point-x b) (point-width b)))
+	 (by2 (+ (point-y b) (point-height b)))
+	 (bh  (point-height b))
+	 x y)
+    (cond ((< bx2 ax2)
+	   ;; Place on top
+	   (setq x bx2
+		 y (+ ay1 (point-height b))))
+	  ((and (> bx2 ax2) (< by2 ay1))
+	   ;; Place on right
+	   (setq x ax2
+		 y ay1))
+	  ((and (>= bh ah) (> bx1 ax1))
+	   ;; Place on bottom
+	   (setq x (- ax2 (point-width b))
+		 y (+ ay1 ah)))
+	  ((<= bx1 ax1)
+	   ;; Place on left
+	   (setq x (- ax1 (point-width c))
+		 y (- by1 (point-height c)))))
+    (message "%s %s %s %s %s" b a c x y)
+    (setf (point-x c) x)
+    (setf (point-y c) y)
+    ))
+  
+(defun graph-pack--intersects1 (a b)
+  (let* ((ax1 (point-x a))
+	 (ay1 (point-y a))
+	 (ax2 (+ (point-x a) (point-width a)))
+	 (ay2 (+ (point-y a) (point-height a)))
+	 (bx1 (point-x b))
+	 (by1 (point-y b))
+	 (bx2 (+ (point-x b) (point-width b)))
+	 (by2 (+ (point-y b) (point-height b))))
+    (not (or (> bx1 ax2) (< bx2 ax1) (> by1 ay2) (< by2 ay1)))))
+
+(defun graph-pack--draw1 (image circles lines)
+  "Draw rectangle packing with front chain."
+  (let* ((m 0)
+	 (graph-draw--index 0)
+	 p1 p2)
+    (when image
+      (dolist (i circles)
+	(setq m (1+ m))
+	(setq graph-draw-fill (point-fill i))
+	(graph-draw-rect image i)
+	(svg-text image (point-title i) :x (point-x i)
+		  :y (+ (point-y i) (point-r i))
+		  :font-size (point-r i)
+		  :id graph-draw--index)
+	(setq graph-draw--index (1+ graph-draw--index)))
+
+      (setq graph-draw-fill "red")
+      (setq p1 (car lines)
+	    p2 (graph-draw-lines-chain image lines))
+      (setq graph-draw-fill "green")
+      (graph-draw-line image p1 p2)
+
+      (svg-possibly-update-image image)
+      (sit-for .1)
+      )))
 
 
 (provide 'graph-draw)
