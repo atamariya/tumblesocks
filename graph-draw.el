@@ -60,37 +60,45 @@
     p))
 
 (defun graph-pack--place1 (b a c)
+  ;; Place c wrt a (in center) and b
+  ;; Consider placement in a 3x3 grid. Calculations below are based on screen coordinates.
+  (if (not b)
+      (progn
+	(setf (point-x a) (- (point-width a)))
+	(setf (point-x c) 0)
+	(setf (point-y c) 0))
+
   (let* ((ax1 (point-x a))
 	 (ay1 (point-y a))
 	 (ax2 (+ (point-x a) (point-width a)))
-	 ;; (ay2 (+ (point-y a) (point-height a)))
-	 (ah  (point-height a))
+	 (ay2 (+ (point-y a) (point-height a)))
 	 (bx1 (point-x b))
 	 (by1 (point-y b))
 	 (bx2 (+ (point-x b) (point-width b)))
 	 (by2 (+ (point-y b) (point-height b)))
-	 (bh  (point-height b))
 	 x y)
-    (cond ((< bx2 ax2)
-	   ;; Place on top
-	   (setq x bx2
-		 y (+ ay1 (point-height b))))
-	  ((and (> bx2 ax2) (< by2 ay1))
+    ;; (message "1 %s %s %s %s %s" b a c x y)
+    (cond ((and (<= bx2 ax2) (<= by1 ay1))
+	   ;; Place in top row
+	   (setq x (if (< by1 ay1) bx2 bx1)
+		 y (- ay1 (point-height b))))
+	  ((and (> bx2 ax2) (< by2 ay2))
 	   ;; Place on right
 	   (setq x ax2
 		 y ay1))
-	  ((and (>= bh ah) (> bx1 ax1))
-	   ;; Place on bottom
-	   (setq x (- ax2 (point-width b))
-		 y (+ ay1 ah)))
+	  ((and (> bx1 ax1) (>= by2 ay2))
+	   ;; Place in bottom row
+	   (setq x (- (if (> by2 ay2) ax2 bx2) ;(if (> bx1 ax1) bx1 (if (> by2 ay2) ax2 bx2))
+		      (point-width c))
+		 y ay2))
 	  ((<= bx1 ax1)
 	   ;; Place on left
 	   (setq x (- ax1 (point-width c))
-		 y (- by1 (point-height c)))))
-    (message "%s %s %s %s %s" b a c x y)
+		 y (- (if (< bx1 ax1) ay2 by2) (point-height c)))))
+    ;; (message "2 %s %s %s %s %s" b a c x y)
     (setf (point-x c) x)
     (setf (point-y c) y)
-    ))
+    )))
   
 (defun graph-pack--intersects1 (a b)
   (let* ((ax1 (point-x a))
@@ -101,7 +109,8 @@
 	 (by1 (point-y b))
 	 (bx2 (+ (point-x b) (point-width b)))
 	 (by2 (+ (point-y b) (point-height b))))
-    (not (or (> bx1 ax2) (< bx2 ax1) (> by1 ay2) (< by2 ay1)))))
+    (or (and (< ax1 bx2) (< bx1 ax2) (< ay1 by2) (< ay2 by1))
+	(and (= ax1 bx1) (= ay1 by1)))))
 
 (defun graph-pack--draw1 (image circles lines)
   "Draw rectangle packing with front chain."
