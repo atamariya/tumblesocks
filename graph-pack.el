@@ -67,14 +67,14 @@
 	 (b (pop pos))
 	 (c (pop pos))
 	 ;; (c (car pos))
-	 (enc 0)
 	 (j 4)
 	 p d front done)
     (when (> n 0)
       ;; place the first circle
       (setf (point-x a) 0)    
       (setf (point-y a) 0)
-      (setq enc (point-r a))
+      ;; (setq front (point-r a))
+      (push a front)
 
       ;; place second circle
       (when b
@@ -82,7 +82,8 @@
 	(setf (point-x b) (point-r a))
 	(setf (point-y b) 0)
 	;; enclosing circle has radius of sum of the 2 radii
-	(setq enc (+ (point-r a) (point-r b))))
+	;; (setq front (+ (point-r a) (point-r b)))
+	(push b front))
 
       (when c
 	;; place third circle
@@ -123,22 +124,20 @@
 	    (setq j (1+ j))
 	    ;; (pp front)
 	    ))
-	;; Possibly move to origin
-	(setq enc (point-r (graph-enclose front)))
 	))
-    enc))
+    ;; Use front chain to calculate a circumscribing circle
+    ;; (setq enc (graph-enclose front))
+    front))
 
-(defun graph-pack--draw1 (image circles lines)
+(defun graph-pack--draw1 (image circles _lines)
   "Draw circle packing with radial lines."
   (let* ((m 0)
 	 (graph-draw--index 0)
-	 p1 p2)
+	 p1)
     (when image
       (setq graph-draw-fill "red")
-      (setq p1 (car circles)
-	    p2 (graph-draw-lines-radial image p1 lines))
-      (setq graph-draw-fill "green")
-      (graph-draw-line image p1 p2)
+      (setq p1 (car circles))
+      (graph-draw-lines-radial image p1 (cdr circles))
 
       (dolist (i circles)
 	(setq m (1+ m))

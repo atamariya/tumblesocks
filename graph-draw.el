@@ -21,21 +21,36 @@
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 (defvar graph-draw--index 0)
 (defvar graph-draw-fill nil)
-(defvar graph-draw-style nil)
 (defvar graph-draw-padding 0)
 
-(defun graph-draw-circle (image circle)
-  (svg-circle image (point-x circle) (point-y circle)
-	      (- (point-r circle) graph-draw-padding)
-	      :fill graph-draw-fill
-	      :id graph-draw--index)
+(defun graph-draw-circle (image circle &optional offset)
+  (let* ((href (point-href circle))
+	 (x (or (car offset) 0))
+	 (y (or (cdr offset) 0))
+	 (anchor image))
+    (when href
+      (setq anchor (svg-node image 'a :xlink:href href
+			     :xlink:title (point-title circle)
+			     :id graph-draw--index))
+      (setq graph-draw--index (1+ graph-draw--index)))
+    (svg-circle anchor (- (point-x circle) x) (- (point-y circle) y)
+		(- (point-r circle) graph-draw-padding)
+		:fill (or graph-draw-fill (point-fill circle))
+		:id graph-draw--index))
   (setq graph-draw--index (1+ graph-draw--index)))
 
 (defun graph-draw-rect (image p)
-  (svg-rectangle image (point-x p) (point-y p) (point-width p) (point-height p)
-		 :fill graph-draw-fill
-		 :id graph-draw--index)
-  (setq graph-draw--index (1+ graph-draw--index)))
+  (let* ((href (point-href p))
+	 (anchor image))
+    (when href
+      (setq anchor (svg-node image 'a :xlink:href href
+			     :xlink:title (point-title p)
+			     :id graph-draw--index))
+      (setq graph-draw--index (1+ graph-draw--index)))
+    (svg-rectangle anchor (point-x p) (point-y p) (point-width p) (point-height p)
+		   :fill (or graph-draw-fill (point-fill p))
+		   :id graph-draw--index)
+    (setq graph-draw--index (1+ graph-draw--index))))
 
 (defun graph-draw-line (image p1 p2)
   (when (and p1 p2)
@@ -55,7 +70,7 @@
 
 (defun graph-draw-lines-radial (image center lines)
   (let* (p)
-    (while (and (setq p (pop lines)) lines)
+    (while (setq p (pop lines))
       (graph-draw-line image center p))
     p))
 
