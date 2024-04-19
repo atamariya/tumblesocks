@@ -175,5 +175,61 @@
       (sit-for .1)
       )))
 
+(defun graph-pack-tree (root image)
+  "Draw a bubble graph for ROOT in IMAGE."
+  (let* (children circles p x y r)
+    ;; Get circumscribing circle
+    (dolist (child root)
+      (setq p (graph-enclose (graph-pack child)))
+      (setf (point-old-x p) (point-x p))
+      (setf (point-old-y p) (point-y p))
+      (push p children))
+    (setq children (nreverse children))
+
+    ;; Place circumscribing circle
+    (setq p (graph-enclose (graph-pack children)))
+    (setq x (point-x p)
+          y (point-y p)
+          r (point-r p))
+    (svg-circle image x y r
+                :stroke-width 2
+                :stroke "red"
+                :id graph-draw--index
+                :fill "none")
+    (setq graph-draw--index (1+ graph-draw--index))
+
+    ;; Draw circles using offset from circumscribing circle
+    (dotimes (j (length children))
+      (setq p (nth j children)
+            circles (nth j root)
+            x (point-x p)
+            y (point-y p)
+            r (point-r p)
+            offset (if (> (length circles) 1)
+                       (cons (- (point-old-x p) (point-x p))
+                             (- (point-old-y p) (point-y p)))))
+      ;; (message "1 %s %s %s %s %s" x y r (- (point-old-x p) (point-x p)) (- (point-old-y p) (point-y p)))
+      (svg-circle image x y r
+                  :stroke-width 2
+                  :stroke "red"
+                  :id graph-draw--index
+                  :fill "none")
+      (setq graph-draw--index (1+ graph-draw--index))
+      (setq graph-draw-fill "red")
+      (graph-draw-lines-radial image (car circles) (cdr circles) offset)
+      (dolist (i circles)
+	(setq graph-draw-fill (point-fill i))
+	(graph-draw-circle image i offset)
+	(svg-text image (point-title i) :x (+ (point-x i) x)
+                  :y (+ (point-y i) y)
+		  :font-size 14
+		  :font-family "Arial"
+		  ;; :font-weight "Bold"
+		  :id graph-draw--index)
+	(setq graph-draw--index (1+ graph-draw--index))
+        ;; (sit-for .1)
+        ;; (svg-possibly-update-image image)
+        ))))
+
 
 (provide 'graph-pack)

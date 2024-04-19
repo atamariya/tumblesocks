@@ -52,15 +52,17 @@
 		   :id graph-draw--index)
     (setq graph-draw--index (1+ graph-draw--index))))
 
-(defun graph-draw-line (image p1 p2)
+(defun graph-draw-line (image p1 p2 &optional offset)
+  (let* ((x (or (car offset) 0))
+	 (y (or (cdr offset) 0)))
   (when (and p1 p2)
     (svg-line image
-	      (point-x p1) (point-y p1)
-	      (point-x p2) (point-y p2)
+	      (- (point-x p1) x) (- (point-y p1) y)
+	      (- (point-x p2) x) (- (point-y p2) y)
 	      :stroke graph-draw-fill
 	      :stroke-width 2
 	      :id graph-draw--index)
-    (setq graph-draw--index (1+ graph-draw--index))))
+    (setq graph-draw--index (1+ graph-draw--index)))))
 
 (defun graph-draw-lines-chain (image lines)
   (let* (p)
@@ -68,10 +70,10 @@
       (graph-draw-line image p (car lines)))
     p))
 
-(defun graph-draw-lines-radial (image center lines)
+(defun graph-draw-lines-radial (image center lines &optional offset)
   (let* (p)
     (while (setq p (pop lines))
-      (graph-draw-line image center p))
+      (graph-draw-line image center p offset))
     p))
 
 (defun graph-pack--place1 (b a c)
