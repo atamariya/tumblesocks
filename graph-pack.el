@@ -177,7 +177,7 @@
 
 (defun graph-pack-tree (root image)
   "Draw a bubble graph for ROOT in IMAGE."
-  (let* (children circles p x y r)
+  (let* (children circles p x y r c)
     ;; Get circumscribing circle
     (dolist (child root)
       (setq p (graph-enclose (graph-pack child)))
@@ -207,7 +207,8 @@
             r (point-r p)
             offset (if (> (length circles) 1)
                        (cons (- (point-old-x p) (point-x p))
-                             (- (point-old-y p) (point-y p)))))
+                             (- (point-old-y p) (point-y p)))
+		     `(0 . 0)))
       ;; (message "1 %s %s %s %s %s" x y r (- (point-old-x p) (point-x p)) (- (point-old-y p) (point-y p)))
       (svg-circle image x y r
                   :stroke-width 2
@@ -219,8 +220,22 @@
       (graph-draw-lines-radial image (car circles) (cdr circles) offset)
       (dolist (i circles)
 	(setq graph-draw-fill (point-fill i))
-	(graph-draw-circle image i offset)
-	(svg-text image (point-title i) :x (+ (point-x i) x)
+	(setq c (graph-draw-circle image i offset))
+	(setq graph-draw--index (1+ graph-draw--index))
+	(svg-animate c "cx" "1"
+		     :id graph-draw--index
+		     :from (number-to-string (point-old-x i))
+		     :to (number-to-string (- (point-x i) (car offset)))
+		     :fill "freeze")
+	(setq graph-draw--index (1+ graph-draw--index))
+	(svg-animate c "cy" "1"
+		     :id graph-draw--index
+		     :from (number-to-string (point-old-y i))
+		     :to (number-to-string (- (point-y i) (cdr offset)))
+		     :fill "freeze")
+	(setq graph-draw--index (1+ graph-draw--index))
+	(svg-text image (point-title i)
+		  :x (+ (point-x i) x)
                   :y (+ (point-y i) y)
 		  :font-size 14
 		  :font-family "Arial"

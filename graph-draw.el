@@ -28,6 +28,7 @@
 	 (x (or (car offset) 0))
 	 (y (or (cdr offset) 0))
 	 (anchor image))
+    (setq graph-draw--index (1+ graph-draw--index))
     (when href
       (setq anchor (svg-node image 'a :xlink:href href
 			     :xlink:title (point-title circle)
@@ -36,12 +37,12 @@
     (svg-circle anchor (- (point-x circle) x) (- (point-y circle) y)
 		(- (point-r circle) graph-draw-padding)
 		:fill (or graph-draw-fill (point-fill circle))
-		:id graph-draw--index))
-  (setq graph-draw--index (1+ graph-draw--index)))
+		:id graph-draw--index)))
 
 (defun graph-draw-rect (image p)
   (let* ((href (point-href p))
 	 (anchor image))
+    (setq graph-draw--index (1+ graph-draw--index))
     (when href
       (setq anchor (svg-node image 'a :xlink:href href
 			     :xlink:title (point-title p)
@@ -49,20 +50,19 @@
       (setq graph-draw--index (1+ graph-draw--index)))
     (svg-rectangle anchor (point-x p) (point-y p) (point-width p) (point-height p)
 		   :fill (or graph-draw-fill (point-fill p))
-		   :id graph-draw--index)
-    (setq graph-draw--index (1+ graph-draw--index))))
+		   :id graph-draw--index)))
 
 (defun graph-draw-line (image p1 p2 &optional offset)
   (let* ((x (or (car offset) 0))
 	 (y (or (cdr offset) 0)))
-  (when (and p1 p2)
-    (svg-line image
-	      (- (point-x p1) x) (- (point-y p1) y)
-	      (- (point-x p2) x) (- (point-y p2) y)
-	      :stroke graph-draw-fill
-	      :stroke-width 2
-	      :id graph-draw--index)
-    (setq graph-draw--index (1+ graph-draw--index)))))
+    (when (and p1 p2)
+      (setq graph-draw--index (1+ graph-draw--index))
+      (svg-line image
+		(- (point-x p1) x) (- (point-y p1) y)
+		(- (point-x p2) x) (- (point-y p2) y)
+		:stroke graph-draw-fill
+		:stroke-width 2
+		:id graph-draw--index))))
 
 (defun graph-draw-lines-chain (image lines)
   (let* (p)
