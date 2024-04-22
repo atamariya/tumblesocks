@@ -215,9 +215,10 @@
                   :stroke "red"
                   :id graph-draw--index
                   :fill "none")
-      (setq graph-draw--index (1+ graph-draw--index))
-      (setq graph-draw-fill "red")
-      (graph-draw-lines-radial image (car circles) (cdr circles) offset)
+      ;; (setq graph-draw--index (1+ graph-draw--index))
+      ;; (setq graph-draw-fill "red")
+      ;; (graph-draw-lines-radial image (car circles) (cdr circles) offset)
+
       (dolist (i circles)
 	(setq graph-draw-fill (point-fill i))
 	(setq c (graph-draw-circle image i offset))
@@ -233,15 +234,12 @@
 		     :from (number-to-string (point-old-y i))
 		     :to (number-to-string (- (point-y i) (cdr offset)))
 		     :fill "freeze")
-	(setq graph-draw--index (1+ graph-draw--index))
-	(svg-text image (point-title i)
-		  :x (+ (point-x i) x)
-                  :y (+ (point-y i) y)
-		  :font-size 14
-		  :font-family "Arial"
-		  ;; :font-weight "Bold"
-		  :id graph-draw--index)
-	(setq graph-draw--index (1+ graph-draw--index))
+	(setq graph-draw--index (1+ graph-draw--index)))
+
+      ;; Keep text on the top to preserve legibility
+      (dolist (i circles)
+	(when (> (point-r i) 30)
+	  (graph-draw-text image (point-title i) i offset))
         ;; (sit-for .1)
         ;; (svg-possibly-update-image image)
         ))))

@@ -30,8 +30,12 @@
 	 (anchor image))
     (setq graph-draw--index (1+ graph-draw--index))
     (when href
-      (setq anchor (svg-node image 'a :xlink:href href
-			     :xlink:title (point-title circle)
+      (setq anchor (svg-node image 'a
+			     :xlink:href (xml-escape-string href)
+			     :xlink:title (and (point-title circle)
+					       (xml-escape-string (point-title circle)))
+			     :text (and (point-text circle)
+					(xml-escape-string (point-text circle)))
 			     :id graph-draw--index))
       (setq graph-draw--index (1+ graph-draw--index)))
     (svg-circle anchor (- (point-x circle) x) (- (point-y circle) y)
@@ -63,6 +67,24 @@
 		:stroke graph-draw-fill
 		:stroke-width 2
 		:id graph-draw--index))))
+
+(defun graph-draw-text (image text p &optional offset)
+  (let* ((x (- (point-x p) (or (car offset) 0)))
+	 (y (- (point-y p) (or (cdr offset) 0)))
+	 (fs 14))
+    (dolist (i (split-string text "\n"))
+      ;; Break text on new line
+      (setq graph-draw--index (1+ graph-draw--index))
+      (svg-text image i
+		;; 14/2 * (0.5 * text length)
+		:x (+ x (* -3.5 (length i)))
+                :y y
+		:font-size fs
+		:font-family "Arial"
+		;; :font-weight "Bold"
+		:id graph-draw--index)
+      (setq y (+ y fs))
+      )))
 
 (defun graph-draw-lines-chain (image lines)
   (let* (p)
