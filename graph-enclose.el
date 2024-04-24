@@ -98,7 +98,7 @@
 
 (defun graph-enclose--triad (arr)
   (pcase (length arr)
-    (1 (nth 0 arr))
+    (1 (copy-point (nth 0 arr)))
     (2 (graph-enclose-2 (nth 0 arr) (nth 1 arr)))
     (3 (graph-enclose-3 (nth 0 arr) (nth 1 arr) (nth 2 arr)))
     ))

@@ -175,6 +175,7 @@
       (sit-for .1)
       )))
 
+;;;###autoload
 (defun graph-pack-tree (root image)
   "Draw a bubble graph for ROOT in IMAGE."
   (let* (children circles p x y r c)

@@ -19,6 +19,9 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+(defstruct node value children)
+(defstruct point x y r old-x old-y fill title href text)
+
 (defvar graph-draw--index 0)
 (defvar graph-draw-fill nil)
 (defvar graph-draw-padding 0)
@@ -177,68 +180,88 @@
       (sit-for .1)
       )))
 
-(defun graph-draw-tree (root image)
-  "Draw a bubble graph for ROOT in IMAGE."
-  (let* (children p x y r c)
+(defun graph-draw--tree-internal (root image)
+  "Draw a bubble graph for ROOT in IMAGE.
+ROOT is a tree of NODEs."
+  (let* (children p c offset)
+    (when (node-p root)
+      (setq children (node-children root))
+      (dolist (i children)
+	(graph-draw--tree-internal i image))
+
+      (setq p (node-value root)
+	    children (mapcar 'node-value (node-children root))
+	    offset (cons (- (point-old-x p) (point-x p))
+			 (- (point-old-y p) (point-y p))))
+
+      (when children
+	;; Only draw for non-leaf root
+	(setq graph-draw--index (1+ graph-draw--index))
+	(svg-circle image (point-x p) (point-y p) (point-r p)
+                    :stroke-width 2
+                    :stroke "red"
+                    :id graph-draw--index
+                    :fill "none"))
+
+      ;; Draw circles using offset from circumscribing circle
+      ;; We want to use circle fill color
+      (setq graph-draw-fill nil)
+      (dolist (i children)
+	(svg-possibly-update-image image)
+	(sit-for .1)
+	(setq c (graph-draw-circle image i offset))
+	(setq graph-draw--index (1+ graph-draw--index))
+	(svg-animate c "cx" "1"
+		     :id graph-draw--index
+		     :from (number-to-string (point-old-x i))
+		     :to (number-to-string (- (point-x i) (car offset)))
+		     :fill "freeze")
+	(setq graph-draw--index (1+ graph-draw--index))
+	(svg-animate c "cy" "1"
+		     :id graph-draw--index
+		     :from (number-to-string (point-old-y i))
+		     :to (number-to-string (- (point-y i) (cdr offset)))
+		     :fill "freeze")
+	(setq graph-draw--index (1+ graph-draw--index)))
+
+      ;; Keep text on the top to preserve legibility
+      (dolist (i children)
+	(when (and (point-title i) (> (point-r i) 30))
+	  (graph-draw-text image (point-title i) i offset)))
+      )))
+
+(defun graph-draw--tree-convert (root image &optional level)
+  "Convert a tree of POINT to tree of NODE."
+  (let* (children p nodes)
+    (setq level (or level 0))
     (cond ((point-p root)
-           (setq children (list root)))
+	   ;; Single root node
+           (setq children (list root)
+		 nodes (list (make-node :value p))))
           ((point-p (car root))
-           (setq children root))
+           (setq children root
+		 nodes (mapcar (lambda (a) (make-node :value a)) root)))
           (t
            ;; Get circumscribing circle
            (dolist (child root)
-             (setq p (graph-draw-tree child image))
-             (setf (point-old-x p) (point-x p))
-             (setf (point-old-y p) (point-y p))
-             (push p children))
+             (setq p (graph-draw--tree-convert child image (1+ level)))
+             (push p nodes)
+	     (push (node-value p) children))
            (setq children (nreverse children))))
 
     ;; Place circumscribing circle
     (setq p (graph-enclose (graph-pack children)))
     (setf (point-old-x p) (point-x p))
     (setf (point-old-y p) (point-y p))
-
-    (when (> (length children) 1)
-      ;; Only draw for non-leaf root
-      (setq offset (cons (- (point-old-x p) (point-x p))
-                         (- (point-old-y p) (point-y p)))
-            x (point-x p)
-            y (point-y p)
-            r (point-r p))
-      (svg-circle image x y r
-                  :stroke-width 2
-                  :stroke "red"
-                  :id graph-draw--index
-                  :fill "none")
-      (setq graph-draw--index (1+ graph-draw--index))
-
-      ;; Draw circles using offset from circumscribing circle
-      ;; We want to use circle fill color
-      (setq graph-draw-fill nil)
-      (dolist (i children)
-        ;; (svg-possibly-update-image image)
-        ;; (sit-for .1)
-        (setq c (graph-draw-circle image i offset))
-        (setq graph-draw--index (1+ graph-draw--index))
-        (svg-animate c "cx" "1"
-		     :id graph-draw--index
-		     :from (number-to-string (point-old-x i))
-		     :to (number-to-string (- (point-x i) (car offset)))
-		     :fill "freeze")
-        (setq graph-draw--index (1+ graph-draw--index))
-        (svg-animate c "cy" "1"
-		     :id graph-draw--index
-		     :from (number-to-string (point-old-y i))
-		     :to (number-to-string (- (point-y i) (cdr offset)))
-		     :fill "freeze")
-        (setq graph-draw--index (1+ graph-draw--index)))
-
-      ;; Keep text on the top to preserve legibility
-      (dolist (i children)
-        (when (and (point-title i) (> (point-r i) 30))
-	  (graph-draw-text image (point-title i) i offset))
-        ))
+    (setf (point-fill p)  "none")
+    (setq p (make-node :value p :children nodes))
     p))
+
+;;;###autoload
+(defun graph-draw-tree (root image)
+  "Draw a bubble graph for ROOT in IMAGE."
+  (graph-draw--tree-internal
+   (graph-draw--tree-convert root image) image))
 
 
 (provide 'graph-draw)
