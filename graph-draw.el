@@ -177,5 +177,68 @@
       (sit-for .1)
       )))
 
+(defun graph-draw-tree (root image)
+  "Draw a bubble graph for ROOT in IMAGE."
+  (let* (children p x y r c)
+    (cond ((point-p root)
+           (setq children (list root)))
+          ((point-p (car root))
+           (setq children root))
+          (t
+           ;; Get circumscribing circle
+           (dolist (child root)
+             (setq p (graph-draw-tree child image))
+             (setf (point-old-x p) (point-x p))
+             (setf (point-old-y p) (point-y p))
+             (push p children))
+           (setq children (nreverse children))))
+
+    ;; Place circumscribing circle
+    (setq p (graph-enclose (graph-pack children)))
+    (setf (point-old-x p) (point-x p))
+    (setf (point-old-y p) (point-y p))
+
+    (when (> (length children) 1)
+      ;; Only draw for non-leaf root
+      (setq offset (cons (- (point-old-x p) (point-x p))
+                         (- (point-old-y p) (point-y p)))
+            x (point-x p)
+            y (point-y p)
+            r (point-r p))
+      (svg-circle image x y r
+                  :stroke-width 2
+                  :stroke "red"
+                  :id graph-draw--index
+                  :fill "none")
+      (setq graph-draw--index (1+ graph-draw--index))
+
+      ;; Draw circles using offset from circumscribing circle
+      ;; We want to use circle fill color
+      (setq graph-draw-fill nil)
+      (dolist (i children)
+        ;; (svg-possibly-update-image image)
+        ;; (sit-for .1)
+        (setq c (graph-draw-circle image i offset))
+        (setq graph-draw--index (1+ graph-draw--index))
+        (svg-animate c "cx" "1"
+		     :id graph-draw--index
+		     :from (number-to-string (point-old-x i))
+		     :to (number-to-string (- (point-x i) (car offset)))
+		     :fill "freeze")
+        (setq graph-draw--index (1+ graph-draw--index))
+        (svg-animate c "cy" "1"
+		     :id graph-draw--index
+		     :from (number-to-string (point-old-y i))
+		     :to (number-to-string (- (point-y i) (cdr offset)))
+		     :fill "freeze")
+        (setq graph-draw--index (1+ graph-draw--index)))
+
+      ;; Keep text on the top to preserve legibility
+      (dolist (i children)
+        (when (and (point-title i) (> (point-r i) 30))
+	  (graph-draw-text image (point-title i) i offset))
+        ))
+    p))
+
 
 (provide 'graph-draw)
