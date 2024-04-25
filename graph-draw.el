@@ -46,6 +46,21 @@
 		:fill (or graph-draw-fill (point-fill circle))
 		:id graph-draw--index)))
 
+(defun graph-draw-outer-circle (image p)
+  (let* ((r (point-r p)))
+    (if graph-draw-group
+	(setq r (- r 20)))
+    (setq graph-draw--index (1+ graph-draw--index))
+    (svg-circle image (point-x p) (point-y p) r
+		:stroke-width 2
+		:stroke "red"
+		:id graph-draw--index
+		:fill "none")
+    (when (and graph-draw-group (point-title p))
+      (graph-draw-text image (point-title p) p
+		       (cons 0 (+ r (if graph-draw-group 5 0)))))
+    ))
+
 (defun graph-draw-rect (image p)
   (let* ((href (point-href p))
 	 (anchor image))
@@ -180,59 +195,51 @@
       (sit-for .1)
       )))
 
-(defun graph-draw--tree-internal (root image)
+(defun graph-draw--tree-internal (root image &optional offset)
   "Draw a bubble graph for ROOT in IMAGE.
 ROOT is a tree of NODEs."
-  (let* (children p c offset)
+  (let* (children p c offset1)
     (when (node-p root)
-      (setq children (node-children root))
+      (setq offset (or offset '(0 . 0))
+	    children (node-children root)
+	    p (node-value root)
+	    offset1 (cons (- (point-old-x p) (point-x p) (car offset))
+			  (- (point-old-y p) (point-y p) (cdr offset))))
       (dolist (i children)
-	(graph-draw--tree-internal i image))
+	(graph-draw--tree-internal i image offset1))
 
-      (setq p (node-value root)
-	    children (mapcar 'node-value (node-children root))
-	    offset (cons (- (point-old-x p) (point-x p))
-			 (- (point-old-y p) (point-y p))))
+      (if children
+	  ;; Only draw for non-leaf root
+	  (graph-draw-outer-circle image p)
 
-      (when children
-	;; Only draw for non-leaf root
-	(setq graph-draw--index (1+ graph-draw--index))
-	(svg-circle image (point-x p) (point-y p) (point-r p)
-                    :stroke-width 2
-                    :stroke "red"
-                    :id graph-draw--index
-                    :fill "none"))
-
-      ;; Draw circles using offset from circumscribing circle
-      ;; We want to use circle fill color
-      (setq graph-draw-fill nil)
-      (dolist (i children)
-	(svg-possibly-update-image image)
-	(sit-for .1)
-	(setq c (graph-draw-circle image i offset))
+	;; Draw circles using offset from circumscribing circle
+	(setq c (graph-draw-circle image p offset))
+	(when (and (point-title p) (> (point-r p) 30))
+	  (graph-draw-text image (point-title p) p offset))
+	;; Animation elements
 	(setq graph-draw--index (1+ graph-draw--index))
 	(svg-animate c "cx" "1"
 		     :id graph-draw--index
-		     :from (number-to-string (point-old-x i))
-		     :to (number-to-string (- (point-x i) (car offset)))
+		     :from (number-to-string (point-old-x p))
+		     :to (number-to-string (- (point-x p) (car offset)))
 		     :fill "freeze")
 	(setq graph-draw--index (1+ graph-draw--index))
 	(svg-animate c "cy" "1"
 		     :id graph-draw--index
-		     :from (number-to-string (point-old-y i))
-		     :to (number-to-string (- (point-y i) (cdr offset)))
+		     :from (number-to-string (point-old-y p))
+		     :to (number-to-string (- (point-y p) (cdr offset)))
 		     :fill "freeze")
 	(setq graph-draw--index (1+ graph-draw--index)))
-
-      ;; Keep text on the top to preserve legibility
-      (dolist (i children)
-	(when (and (point-title i) (> (point-r i) 30))
-	  (graph-draw-text image (point-title i) i offset)))
+      
+      (svg-possibly-update-image image)
+      (sit-for .01)
       )))
 
+(defvar graph-draw-group t)
+(defvar graph-draw-group-fn nil)
 (defun graph-draw--tree-convert (root image &optional level)
   "Convert a tree of POINT to tree of NODE."
-  (let* (children p nodes)
+  (let* (children p nodes d)
     (setq level (or level 0))
     (cond ((point-p root)
 	   ;; Single root node
@@ -244,7 +251,12 @@ ROOT is a tree of NODEs."
           (t
            ;; Get circumscribing circle
            (dolist (child root)
-             (setq p (graph-draw--tree-convert child image (1+ level)))
+             (setq d (1+ level)
+		   p (graph-draw--tree-convert child image d))
+	     (setf (point-title (node-value p))
+		   (or (if graph-draw-group-fn
+			   (funcall graph-draw-group-fn d (length nodes))
+			 (format "Level %d, %d" d (length nodes)))))
              (push p nodes)
 	     (push (node-value p) children))
            (setq children (nreverse children))))
@@ -253,6 +265,8 @@ ROOT is a tree of NODEs."
     (setq p (graph-enclose (graph-pack children)))
     (setf (point-old-x p) (point-x p))
     (setf (point-old-y p) (point-y p))
+    (if graph-draw-group
+	(setf (point-r p) (+ (point-r p) 20)))
     (setf (point-fill p)  "none")
     (setq p (make-node :value p :children nodes))
     p))
@@ -260,8 +274,9 @@ ROOT is a tree of NODEs."
 ;;;###autoload
 (defun graph-draw-tree (root image)
   "Draw a bubble graph for ROOT in IMAGE."
-  (graph-draw--tree-internal
-   (graph-draw--tree-convert root image) image))
+  (setq root (graph-draw--tree-convert root image))
+  (graph-draw--tree-internal root image)
+  (node-value root))
 
 
 (provide 'graph-draw)
