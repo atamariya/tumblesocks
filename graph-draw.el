@@ -20,17 +20,21 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 (defstruct node value children)
-(defstruct point x y r old-x old-y fill title href text)
+(defstruct point x y r old-x old-y fill title href text image)
 
 (defvar graph-draw--index 0)
 (defvar graph-draw-fill nil)
 (defvar graph-draw-padding 0)
 
+(defvar graph-draw-group t)
+(defvar graph-draw-group-fn nil)
+
 (defun graph-draw-circle (image circle &optional offset)
   (let* ((href (point-href circle))
 	 (x (or (car offset) 0))
 	 (y (or (cdr offset) 0))
-	 (anchor image))
+	 (anchor image)
+	 c clip)
     (setq graph-draw--index (1+ graph-draw--index))
     (when href
       (setq anchor (svg-node image 'a
@@ -41,10 +45,29 @@
 					(xml-escape-string (point-text circle)))
 			     :id graph-draw--index))
       (setq graph-draw--index (1+ graph-draw--index)))
+    (setq c
     (svg-circle anchor (- (point-x circle) x) (- (point-y circle) y)
 		(- (point-r circle) graph-draw-padding)
 		:fill (or graph-draw-fill (point-fill circle))
-		:id graph-draw--index)))
+		:id graph-draw--index))
+    (when (point-image circle)
+      (setq graph-draw--index (1+ graph-draw--index))
+      (setq clip (svg-clip-path image
+				:id graph-draw--index))
+      (svg-embed-href image (point-image circle)
+		      :x (- (point-x circle) x (point-r circle))
+		      :y (- (point-y circle) y (point-r circle))
+		      :width (* 2 (point-r circle))
+		      :height (* 2 (point-r circle))
+		      :id (1+ graph-draw--index)
+		      :clip-path (format "url(#%d)" graph-draw--index))
+      (setq graph-draw--index (+ 2 graph-draw--index))
+      (svg-circle clip (- (point-x circle) x) (- (point-y circle) y)
+		(- (point-r circle) graph-draw-padding)
+		:fill (or graph-draw-fill (point-fill circle))
+		:id graph-draw--index)
+      (setq graph-draw--index (1+ graph-draw--index)))
+    c))
 
 (defun graph-draw-outer-circle (image p)
   (let* ((r (point-r p)))
@@ -205,16 +228,19 @@ ROOT is a tree of NODEs."
 	    p (node-value root)
 	    offset1 (cons (- (point-old-x p) (point-x p) (car offset))
 			  (- (point-old-y p) (point-y p) (cdr offset))))
-      (dolist (i children)
-	(graph-draw--tree-internal i image offset1))
-
-      (if children
-	  ;; Only draw for non-leaf root
+      (if (and children (> (length children) 1))
+	  ;; Only draw for non-leaf root.
+	  ;; We manipulate the radius for text placement. So let's not draw for single child.
 	  (graph-draw-outer-circle image p)
 
 	;; Draw circles using offset from circumscribing circle
+	(setq graph-draw-fill nil)
+	(if (point-image p)
+	    (setf (point-r p) (- (point-r p) 20)))
 	(setq c (graph-draw-circle image p offset))
-	(when (and (point-title p) (> (point-r p) 30))
+	(when (and (point-title p) (> (point-r p) 10))
+	  (if (point-image p)
+	      (setq offset (cons (car offset) (- (cdr offset) (point-r p) 15))))
 	  (graph-draw-text image (point-title p) p offset))
 	;; Animation elements
 	(setq graph-draw--index (1+ graph-draw--index))
@@ -231,14 +257,15 @@ ROOT is a tree of NODEs."
 		     :fill "freeze")
 	(setq graph-draw--index (1+ graph-draw--index)))
       
+      (dolist (i children)
+	(graph-draw--tree-internal i image offset1))
+
       (svg-possibly-update-image image)
       (sit-for .01)
       )))
 
-(defvar graph-draw-group t)
-(defvar graph-draw-group-fn nil)
 (defun graph-draw--tree-convert (root image &optional level)
-  "Convert a tree of POINT to tree of NODE."
+  "Convert a tree of POINT to a tree of NODE."
   (let* (children p nodes d)
     (setq level (or level 0))
     (cond ((point-p root)
@@ -246,17 +273,25 @@ ROOT is a tree of NODEs."
            (setq children (list root)
 		 nodes (list (make-node :value p))))
           ((point-p (car root))
-           (setq children root
-		 nodes (mapcar (lambda (a) (make-node :value a)) root)))
+	   ;; If there's an image, enclose the point in a parent so
+	   ;; that image is displayed as well as title appears on top.
+	   (mapc (lambda (a)
+		       (if (point-image a)
+			   (setf (point-r a) (+ (point-r a) 20)))
+		       (push (make-node :value a) nodes)
+		       (push a children))
+		 root)
+	  (setq children (nreverse children)))
           (t
            ;; Get circumscribing circle
            (dolist (child root)
              (setq d (1+ level)
 		   p (graph-draw--tree-convert child image d))
+	     (when graph-draw-group
 	     (setf (point-title (node-value p))
 		   (or (if graph-draw-group-fn
 			   (funcall graph-draw-group-fn d (length nodes))
-			 (format "Level %d, %d" d (length nodes)))))
+			 (format "Level %d, %d" d (length nodes))))))
              (push p nodes)
 	     (push (node-value p) children))
            (setq children (nreverse children))))
