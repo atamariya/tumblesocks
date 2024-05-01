@@ -27,6 +27,20 @@
 (defvar-local graph-brain--image nil)
 (defvar-local graph-brain--points nil)
 
+(defun graph-brain--shorten (title)
+  "Split words in lines. Truncate second words onwards."
+  (with-temp-buffer
+    (insert title)
+    (goto-char (point-min))
+    (forward-word 2)
+    (when (> (point-max) (point))
+      (delete-region (point) (point-max))
+      (insert "..."))
+    (forward-word -2)
+    (while (re-search-forward "[ -]" nil t)
+      (replace-match "\n"))
+    (buffer-string)))
+
 (defun graph-brain--search ()
   "Highlight the nodes with a code to enable selection."
   (interactive)
@@ -71,12 +85,24 @@
 	(org-roam-tag-add tags))
       )))
 
-(defun graph-brain--draw (points &optional group-fn)
+(defun graph-brain--draw (points lines &optional group-fn)
   (interactive)
-  (let* (image)
+  (let* ((graph-draw-padding (if group-fn 0 10))
+	 image)
     (switch-to-buffer (get-buffer-create "*graph*"))
-    (setq image (graph-draw-window points))
+    (setq image (graph-draw-init))
+    ;; (setq p (graph-draw-tree points image))
+    (setq points (graph-draw--tree-convert points image))
+    (dolist (p lines)
+      (setq graph-draw-fill "red")
+      (graph-draw-line image (car p) (cdr p)))
+    (graph-draw--tree-internal points image)
+    
+    ;; (setq w (* 2 (point-r p))
+    ;; 	  h w)
+    ;; (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
 
+    (svg-possibly-update-image image)
     (graph-brain-mode)
     (setq graph-brain--points points
 	  graph-brain--image image)
@@ -89,7 +115,8 @@
 (defun graph-brain--group-tag ()
   (interactive)
   (let* ((nodes (org-roam-db-query [:select [id title] :from nodes]))
-	 (tags  (org-roam-db-query [:select [tag node-id] :from tags]))
+	 ;; (tags  (org-roam-db-query [:select [tag node-id] :from tags]))
+	 (tags  (org-roam-db-query [:select [tags:tag nodes:id] :from nodes :left :outer :join tags :on (= nodes:id tags:node-id)]))
 	 (group (make-hash-table :test 'equal))
 	 root points p names)
     (mapc (lambda (a)
@@ -106,55 +133,54 @@
 				:old-x 0 :old-y 0
 				:fill (random-color-html)
 				:href (concat "id:" (nth 0 p))
-				:title (nth 1 p))
+				:text (nth 1 p)
+				:title (graph-brain--shorten (nth 1 p)))
 		    points))))
       (push j names)
       (push points root))
     ;; (pp group)
     ;; (pp root)
-    ;; (pp names)
+    (pp names)
 
-    (graph-brain--draw root (lambda (d i)
-                              (if (and (> d 0) )
-                                  (format "#%s" (nth i names)))
-                              ))
+    (graph-brain--draw root nil (lambda (d i)
+				  (if (and (> d 0) )
+                                      (format "#%s" (or (nth i names) "Ungrouped")))
+				  ))
     ))
 
 ;;;###autoload
 (defun graph-brain ()
   (interactive)
   (let* ((nodes (org-roam-db-query [:select [id title] :from nodes]))
-	 points title)
+	 (links (org-roam-db-query [:select [source dest] :from links
+					    :where (= type "id")]))
+	 (group (make-hash-table :test 'equal))
+	 points title pt id lines)
     (dolist (p nodes)
-      (setq title (nth 1 p))
-      (push (make-point :x 0 :y 0 :r 30
-			:old-x 0 :old-y 0
-			:fill (random-color-html)
-			:href (concat "id:" (nth 0 p))
-			:text title
-			:title (with-temp-buffer
-				 ;; Split words in lines. Truncate second words onwards.
-				 (insert title)
-				 (goto-char (point-min))
-				 (forward-word 2)
-				 (when (> (point-max) (point))
-				   (delete-region (point) (point-max))
-				   (insert "..."))
-				 (forward-word -2)
-				 (while (re-search-forward "[ -]" nil t)
-				   (replace-match "\n"))
-				 (buffer-string)))
-	    points))
+      (setq title (nth 1 p)
+	    id (nth 0 p)
+	    pt (make-point :x 0 :y 0 :r 30
+			   :old-x 0 :old-y 0
+			   :fill (random-color-html)
+			   :href (concat "id:" id)
+			   :text title
+			   :title (graph-brain--shorten title)))
+      (puthash id pt group)
+      (push pt points))
     ;; (pp points)
-    (graph-brain--draw points)
+    (dolist (p links)
+      (push (cons (gethash (car p) group)
+		  (gethash (cadr p) group))
+	    lines))
+    (graph-brain--draw points lines)
     ))
 
 (defvar graph-brain-mode-map (let* ((map (make-sparse-keymap)))
-			     (define-key map "/" 'graph-brain--search)
-			     (define-key map "g" 'graph-brain--group-tag)
-			     (define-key map "n" 'graph-brain)
-			     (define-key map "t" 'graph-brain--tag-add)
-			     map))
+			       (define-key map "/" 'graph-brain--search)
+			       (define-key map "g" 'graph-brain--group-tag)
+			       (define-key map "n" 'graph-brain)
+			       (define-key map "t" 'graph-brain--tag-add)
+			       map))
 ;;;###autoload
 (define-derived-mode graph-brain-mode special-mode "Brain"
   "Major mode for managing graph-brain."

@@ -234,7 +234,7 @@ ROOT is a tree of NODEs."
 	    p (node-value root)
 	    offset1 (cons (- (point-old-x p) (point-x p) (car offset))
 			  (- (point-old-y p) (point-y p) (cdr offset))))
-      (if (and children (> (length children) 1))
+      (if children ;(and children (> (length children) 1))
 	  ;; Only draw for non-leaf root.
 	  ;; We manipulate the radius for text placement. So let's not draw for single child.
 	  (graph-draw-outer-circle image p)
@@ -313,16 +313,12 @@ ROOT is a tree of NODEs."
     p))
 
 ;;;###autoload
-(defun graph-draw-window (points)
+(defun graph-draw-init ()
   "Draw an SVG image for POINTS fitting the current window."
   (let* ((w (window-pixel-width))
          (h (window-pixel-height))
 	 (image (svg-create w h)))
-    (setq p (graph-draw-tree points image))
-
     (setq inhibit-read-only t)
-    ;; (setq w (* 2 (point-r p))
-    ;; 	  h w)
     (erase-buffer)
     (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
     (svg-insert-image image)
