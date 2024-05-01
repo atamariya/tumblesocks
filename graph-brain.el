@@ -73,31 +73,17 @@
 
 (defun graph-brain--draw (points &optional group-fn)
   (interactive)
-  (let* ((w (window-pixel-width))
-         (h (window-pixel-height))
-	 (image (svg-create w h))
-	 (buf (get-buffer-create "*graph*")))
+  (let* (image)
+    (switch-to-buffer (get-buffer-create "*graph*"))
+    (setq image (graph-draw-window points))
 
-    ;; (pp points)
-    (setq p (graph-draw-tree points image))
-
-    (switch-to-buffer buf)
     (graph-brain-mode)
-    (setq inhibit-read-only t
-	  graph-brain--points points
+    (setq graph-brain--points points
 	  graph-brain--image image)
     (when group-fn
       (setq graph-draw-group t
             graph-draw-group-fn group-fn))
-    ;; (use-local-map graph-brain-keymap)
-    ;; (setq w (* 2 (point-r p))
-    ;; 	  h w)
     (setq svg-click-function 'graph-brain--open)
-    (erase-buffer)
-    (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
-    (svg-insert-image image)
-    (svg-possibly-update-image image)
-    (setq inhibit-read-only nil)
     ))
 
 (defun graph-brain--group-tag ()

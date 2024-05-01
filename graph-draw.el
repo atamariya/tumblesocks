@@ -19,8 +19,14 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+(require 'svg)
+
 (defstruct node value children)
-(defstruct point x y r old-x old-y fill title href text image)
+(defstruct point x y r
+	   old-x old-y fill title href text image
+	   vel-x vel-y mass
+	   width height
+	   )
 
 (defvar graph-draw--index 0)
 (defvar graph-draw-fill nil)
@@ -305,6 +311,24 @@ ROOT is a tree of NODEs."
     (setf (point-fill p)  "none")
     (setq p (make-node :value p :children nodes))
     p))
+
+;;;###autoload
+(defun graph-draw-window (points)
+  "Draw an SVG image for POINTS fitting the current window."
+  (let* ((w (window-pixel-width))
+         (h (window-pixel-height))
+	 (image (svg-create w h)))
+    (setq p (graph-draw-tree points image))
+
+    (setq inhibit-read-only t)
+    ;; (setq w (* 2 (point-r p))
+    ;; 	  h w)
+    (erase-buffer)
+    (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
+    (svg-insert-image image)
+    (svg-possibly-update-image image)
+    (setq inhibit-read-only nil)
+    image))
 
 ;;;###autoload
 (defun graph-draw-tree (root image)
