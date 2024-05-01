@@ -99,13 +99,13 @@
 		    points))))
       (push j names)
       (push points root))
-    (pp group)
-    (pp root)
-    (pp names)
+    ;; (pp group)
+    ;; (pp root)
+    ;; (pp names)
     (setq p (graph-draw-tree root image))
 
     (switch-to-buffer buf)
-    (special-mode)
+    (graph-brain-mode)
     (setq inhibit-read-only t
 	  graph-brain--points root
 	  graph-brain--image image)
@@ -126,10 +126,6 @@
     (setq inhibit-read-only nil)
     ))
 
-(defvar graph-brain-keymap (let* ((map (make-sparse-keymap)))
-			     (define-key map "/" 'graph-brain--search)
-			     (define-key map "t" 'graph-brain--tag-add)
-			     map))
 ;;;###autoload
 (defun graph-brain ()
   (interactive)
@@ -138,23 +134,36 @@
 	 (image (svg-create w h))
 	 (nodes (org-roam-db-query [:select [id title] :from nodes]))
 	 (buf (get-buffer-create "*graph*"))
-	 points p)
+	 points p title)
     (dolist (p nodes)
+      (setq title (nth 1 p))
       (push (make-point :x 0 :y 0 :r 30
 			:old-x 0 :old-y 0
 			:fill (random-color-html)
 			:href (concat "id:" (nth 0 p))
-			:title (nth 1 p))
+			:text title
+			:title (with-temp-buffer
+				 ;; Split words in lines. Truncate second words onwards.
+				 (insert title)
+				 (goto-char (point-min))
+				 (forward-word 2)
+				 (when (> (point-max) (point))
+				   (delete-region (point) (point-max))
+				   (insert "..."))
+				 (forward-word -2)
+				 (while (re-search-forward "[ -]" nil t)
+				   (replace-match "\n"))
+				 (buffer-string)))
 	    points))
-    (pp points)
+    ;; (pp points)
     (setq p (graph-draw-tree points image))
 
     (switch-to-buffer buf)
-    (special-mode)
+    (graph-brain-mode)
     (setq inhibit-read-only t
 	  graph-brain--points points
 	  graph-brain--image image)
-    (use-local-map graph-brain-keymap)
+    ;; (use-local-map graph-brain-keymap)
     ;; (setq w (* 2 (point-r p))
     ;; 	  h w)
     (setq svg-click-function 'graph-brain--open)
@@ -164,6 +173,17 @@
     (svg-possibly-update-image image)
     (setq inhibit-read-only nil)
     ))
+
+(defvar graph-brain-mode-map (let* ((map (make-sparse-keymap)))
+			     (define-key map "/" 'graph-brain--search)
+			     (define-key map "g" 'graph-brain--group-tag)
+			     (define-key map "n" 'graph-brain)
+			     (define-key map "t" 'graph-brain--tag-add)
+			     map))
+;;;###autoload
+(define-derived-mode graph-brain-mode special-mode "Brain"
+  "Major mode for managing graph-brain."
+  (setq cursor-type nil))
 
 
 (provide 'graph-brain)
