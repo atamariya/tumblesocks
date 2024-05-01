@@ -71,14 +71,39 @@
 	(org-roam-tag-add tags))
       )))
 
-(defun graph-brain--group-tag ()
+(defun graph-brain--draw (points &optional group-fn)
   (interactive)
   (let* ((w (window-pixel-width))
          (h (window-pixel-height))
 	 (image (svg-create w h))
-	 (nodes (org-roam-db-query [:select [id title] :from nodes]))
+	 (buf (get-buffer-create "*graph*")))
+
+    ;; (pp points)
+    (setq p (graph-draw-tree points image))
+
+    (switch-to-buffer buf)
+    (graph-brain-mode)
+    (setq inhibit-read-only t
+	  graph-brain--points points
+	  graph-brain--image image)
+    (when group-fn
+      (setq graph-draw-group t
+            graph-draw-group-fn group-fn))
+    ;; (use-local-map graph-brain-keymap)
+    ;; (setq w (* 2 (point-r p))
+    ;; 	  h w)
+    (setq svg-click-function 'graph-brain--open)
+    (erase-buffer)
+    (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
+    (svg-insert-image image)
+    (svg-possibly-update-image image)
+    (setq inhibit-read-only nil)
+    ))
+
+(defun graph-brain--group-tag ()
+  (interactive)
+  (let* ((nodes (org-roam-db-query [:select [id title] :from nodes]))
 	 (tags  (org-roam-db-query [:select [tag node-id] :from tags]))
-	 (buf (get-buffer-create "*graph*"))
 	 (group (make-hash-table :test 'equal))
 	 root points p names)
     (mapc (lambda (a)
@@ -102,39 +127,18 @@
     ;; (pp group)
     ;; (pp root)
     ;; (pp names)
-    (setq p (graph-draw-tree root image))
 
-    (switch-to-buffer buf)
-    (graph-brain-mode)
-    (setq inhibit-read-only t
-	  graph-brain--points root
-	  graph-brain--image image)
-    (setq graph-draw-group t
-          graph-draw-group-fn (lambda (d i)
-                                (if (and (> d 0) )
-                                    (format "#%s" (nth i names)))
-                                ;; (message "%s, %s, %s %s" d i (nth i group) (nth i root))
-                                ))
-    ;; (use-local-map graph-brain-keymap)
-    ;; (setq w (* 2 (point-r p))
-    ;; 	  h w)
-    (setq svg-click-function 'graph-brain--open)
-    (erase-buffer)
-    (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
-    (svg-insert-image image)
-    (svg-possibly-update-image image)
-    (setq inhibit-read-only nil)
+    (graph-brain--draw root (lambda (d i)
+                              (if (and (> d 0) )
+                                  (format "#%s" (nth i names)))
+                              ))
     ))
 
 ;;;###autoload
 (defun graph-brain ()
   (interactive)
-  (let* ((w (window-pixel-width))
-         (h (window-pixel-height))
-	 (image (svg-create w h))
-	 (nodes (org-roam-db-query [:select [id title] :from nodes]))
-	 (buf (get-buffer-create "*graph*"))
-	 points p title)
+  (let* ((nodes (org-roam-db-query [:select [id title] :from nodes]))
+	 points title)
     (dolist (p nodes)
       (setq title (nth 1 p))
       (push (make-point :x 0 :y 0 :r 30
@@ -156,22 +160,7 @@
 				 (buffer-string)))
 	    points))
     ;; (pp points)
-    (setq p (graph-draw-tree points image))
-
-    (switch-to-buffer buf)
-    (graph-brain-mode)
-    (setq inhibit-read-only t
-	  graph-brain--points points
-	  graph-brain--image image)
-    ;; (use-local-map graph-brain-keymap)
-    ;; (setq w (* 2 (point-r p))
-    ;; 	  h w)
-    (setq svg-click-function 'graph-brain--open)
-    (erase-buffer)
-    (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
-    (svg-insert-image image)
-    (svg-possibly-update-image image)
-    (setq inhibit-read-only nil)
+    (graph-brain--draw points)
     ))
 
 (defvar graph-brain-mode-map (let* ((map (make-sparse-keymap)))
