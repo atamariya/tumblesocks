@@ -23,6 +23,9 @@
 (require 'graph-pack)
 
 (defvar graph-brain--doc nil)
+(defvar graph-brain--buffer nil)
+(defvar graph-brain--tags nil)
+(defvar graph-brain--view 'graph-brain--all)
 
 (defvar-local graph-brain--image nil)
 (defvar-local graph-brain--points nil)
@@ -85,11 +88,18 @@
 	(org-roam-tag-add tags))
       )))
 
+(defun graph-brain--tag-select (tags)
+  (interactive
+   (list (let ((crm-separator "[ 	]*:[ 	]*"))
+           (completing-read-multiple "Tag: " (org-roam-tag-completions)))))
+  (switch-to-buffer-other-window graph-brain--buffer)
+  (setq graph-brain--tags tags)
+  (funcall graph-brain--view))
+
 (defun graph-brain--draw (points lines &optional group-fn)
   (interactive)
   (let* ((graph-draw-padding (if group-fn 0 10))
 	 image)
-    (switch-to-buffer (get-buffer-create "*graph*"))
     (setq image (graph-draw-init))
     ;; (setq p (graph-draw-tree points image))
     (setq points (graph-draw--tree-convert points image))
@@ -103,7 +113,7 @@
     ;; (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
 
     (svg-possibly-update-image image)
-    (graph-brain-mode)
+    ;; (graph-brain-mode)
     (setq graph-brain--points points
 	  graph-brain--image image)
     (when group-fn
@@ -115,8 +125,18 @@
 (defun graph-brain--group-tag ()
   (interactive)
   (let* ((nodes (org-roam-db-query [:select [id title] :from nodes]))
-	 ;; (tags  (org-roam-db-query [:select [tag node-id] :from tags]))
-	 (tags  (org-roam-db-query [:select [tags:tag nodes:id] :from nodes :left :outer :join tags :on (= nodes:id tags:node-id)]))
+	 (tags  (if (not graph-brain--tags)
+		    (org-roam-db-query [:select [tag node-id] :from tags])
+		  (org-roam-db-query
+		   (vconcat
+		    [:select [tags:tag nodes:id] :from nodes
+			     :left :join tags :on (= nodes:id tags:node-id)]
+		    (vector :where (apply 'list 'and (mapcar (lambda (a) `(= tags:tag ,a))
+							     graph-brain--tags)))
+		    ))))
+	 ;; (tags  (org-roam-db-query [:select [links:type nodes:id] :from nodes
+	 ;; 				    :left :outer :join links :on (= nodes:id links:dest)
+	 ;; 				    :where (= links:type "id")]))
 	 (group (make-hash-table :test 'equal))
 	 root points p names)
     (mapc (lambda (a)
@@ -146,12 +166,20 @@
 				  (if (and (> d 0) )
                                       (format "#%s" (or (nth i names) "Ungrouped")))
 				  ))
+    (setq graph-brain--view 'graph-brain--group-tag)
     ))
 
-;;;###autoload
-(defun graph-brain ()
+(defun graph-brain--all ()
   (interactive)
-  (let* ((nodes (org-roam-db-query [:select [id title] :from nodes]))
+  (let* ((nodes (if (not graph-brain--tags)
+		    (org-roam-db-query [:select [id title] :from nodes])
+		  (org-roam-db-query
+		   (vconcat
+		    [:select [nodes:id nodes:title tags:tag] :from nodes
+			     :left :join tags :on (= nodes:id tags:node-id)]
+		    (vector :where (apply 'list 'and (mapcar (lambda (a) `(= tags:tag ,a))
+							     graph-brain--tags)))
+		    ))))
 	 (links (org-roam-db-query [:select [source dest] :from links
 					    :where (= type "id")]))
 	 (group (make-hash-table :test 'equal))
@@ -173,12 +201,14 @@
 		  (gethash (cadr p) group))
 	    lines))
     (graph-brain--draw points lines)
+    (setq graph-brain--view 'graph-brain--all)
     ))
 
 (defvar graph-brain-mode-map (let* ((map (make-sparse-keymap)))
 			       (define-key map "/" 'graph-brain--search)
 			       (define-key map "g" 'graph-brain--group-tag)
-			       (define-key map "n" 'graph-brain)
+			       (define-key map "n" 'graph-brain--all)
+			       (define-key map "s" 'graph-brain--tag-select)
 			       (define-key map "t" 'graph-brain--tag-add)
 			       map))
 ;;;###autoload
@@ -186,5 +216,12 @@
   "Major mode for managing graph-brain."
   (setq cursor-type nil))
 
+;;;###autoload
+(defun graph-brain ()
+  (interactive)
+  (setq graph-brain--buffer (get-buffer-create "*graph*"))
+  (switch-to-buffer-other-window graph-brain--buffer)
+  (graph-brain-mode)
+  (funcall graph-brain--view))
 
 (provide 'graph-brain)

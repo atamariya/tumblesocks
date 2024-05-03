@@ -306,6 +306,8 @@ ROOT is a tree of NODEs."
     (setq p (graph-enclose (graph-pack children)))
     (setf (point-old-x p) (point-x p))
     (setf (point-old-y p) (point-y p))
+    ;; p is a copy of children for single node. Don't propagate the title
+    (setf (point-title p) nil)
     (if graph-draw-group
 	(setf (point-r p) (+ (point-r p) 20)))
     (setf (point-fill p)  "none")
