@@ -48,7 +48,7 @@
   "Highlight the nodes with a code to enable selection."
   (interactive)
   (let* ((image graph-brain--image)
-	 (l (length (dom-children image)))
+	 ;; (l (length (dom-children image)))
 	 (i 0)
 	 g x y r off)
     (dolist (p (dom-by-tag image 'circle))
@@ -116,9 +116,8 @@
     ;; (graph-brain-mode)
     (setq graph-brain--points points
 	  graph-brain--image image)
-    (when group-fn
-      (setq graph-draw-group t
-            graph-draw-group-fn group-fn))
+    (setq graph-draw-group group-fn
+          graph-draw-group-fn group-fn)
     (setq svg-click-function 'graph-brain--open)
     ))
 
@@ -202,6 +201,64 @@
 	    lines))
     (graph-brain--draw points lines)
     (setq graph-brain--view 'graph-brain--all)
+    ))
+
+(defun graph--firefox-bookmarks-list (tag)
+  (let* ((buf (get-buffer-create "*bookmarks*")))
+    (switch-to-buffer-other-window buf)
+    (erase-buffer)
+    (dolist (i (gethash tag graph-brain--doc))
+      (insert (format "[[%s][%s]]\n" (cdr i) (car i))))
+    (goto-char (point-min))
+    ))
+
+;;;###autoload
+(defun graph-firefox-bookmarks (filename)
+  (interactive "fFirefox bookmarks backup: ")
+  ;; (setq filename "~/work/bookmarks-2024-05-06.json")
+  (let* ((file (find-file-noselect filename))
+	 (json (with-current-buffer file
+		 (goto-char (point-min))
+		 (json-parse-buffer)))
+	 (nodes (json-resolve "children[1].children" json t))
+	 (group (make-hash-table :test 'equal))
+	 (max 0)
+	 points p title)
+    (dotimes (i (length nodes))
+      (let* ((v (aref nodes i))
+	     (tags (json-resolve "tags" v t))
+	     (title (json-resolve "title" v t))
+	     (uri (json-resolve "uri" v t))
+	     (v (cons title uri)))
+	(mapc (lambda (tag)
+		(if (setq p (gethash tag group))
+		    (progn
+		      (if (not (string= tag "Ungrouped"))
+			  (setq max (max max (1+ (length p)))))
+		      (puthash tag (cons v p) group))
+		  (puthash tag (list v) group)))
+		(if (not tags) '("Ungrouped") (split-string tags ",")))))
+
+    (maphash (lambda (k v)
+	       ;; (message "%s %s %s" max k v)
+	       (setq title (format "%s (%d)" k (length v)))
+	       (push (make-point :x 0 :y 0 :r (+ 30 (length v)) ;(/ (* 100 (length v)) max) 
+				 :old-x 0 :old-y 0
+				 :fill (random-color-html)
+				 :href k
+				 :text title
+				 :title title)
+		     points))
+	     group)
+    (setq points (sort points (lambda (a b) (> (point-r a) (point-r b)))))
+
+    (setq graph-brain--buffer (get-buffer-create "*graph*"))
+    (switch-to-buffer-other-window graph-brain--buffer)
+    (graph-brain-mode)
+    
+    (graph-brain--draw points nil)
+    (setq svg-click-function 'graph--firefox-bookmarks-list
+	  graph-brain--doc group)    
     ))
 
 (defvar graph-brain-mode-map (let* ((map (make-sparse-keymap)))

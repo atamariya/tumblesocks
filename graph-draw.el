@@ -306,26 +306,25 @@ ROOT is a tree of NODEs."
     (setq p (graph-enclose (graph-pack children)))
     (setf (point-old-x p) (point-x p))
     (setf (point-old-y p) (point-y p))
-    ;; p is a copy of children for single node. Don't propagate the title
-    (setf (point-title p) nil)
     (if graph-draw-group
-	(setf (point-r p) (+ (point-r p) 20)))
-    (setf (point-fill p)  "none")
+	(setf (point-r p) (+ (point-r p) 20)) 
+      ;; p is a copy of children for single node. Don't propagate the title
+      (setf (point-title p) nil))
+   (setf (point-fill p)  "none")
     (setq p (make-node :value p :children nodes))
     p))
 
 ;;;###autoload
 (defun graph-draw-init ()
-  "Draw an SVG image for POINTS fitting the current window."
+  "Draw an SVG image fitting the current window with origin at the center."
   (let* ((w (window-pixel-width))
          (h (window-pixel-height))
+	 (inhibit-read-only t)
 	 (image (svg-create w h)))
-    (setq inhibit-read-only t)
     (erase-buffer)
     (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
     (svg-insert-image image)
     (svg-possibly-update-image image)
-    (setq inhibit-read-only nil)
     image))
 
 ;;;###autoload
