@@ -270,10 +270,12 @@ ROOT is a tree of NODEs."
       (sit-for .01)
       )))
 
-(defun graph-draw--tree-convert (root image &optional level)
+(defun graph-draw--tree-convert (root image &optional level index)
   "Convert a tree of POINT to a tree of NODE."
-  (let* (children p nodes d)
+  (let* ((i 0)
+	 children p nodes d)
     (setq level (or level 0))
+    (setq index (or index 0))
     (cond ((point-p root)
 	   ;; Single root node
            (setq children (list root)
@@ -292,12 +294,8 @@ ROOT is a tree of NODEs."
            ;; Get circumscribing circle
            (dolist (child root)
              (setq d (1+ level)
-		   p (graph-draw--tree-convert child image d))
-	     (when graph-draw-group
-	     (setf (point-title (node-value p))
-		   (or (if graph-draw-group-fn
-			   (funcall graph-draw-group-fn d (length nodes))
-			 (format "Level %d, %d" d (length nodes))))))
+		   p (graph-draw--tree-convert child image d i)
+		   i (1+ i))
              (push p nodes)
 	     (push (node-value p) children))
            (setq children (nreverse children))))
@@ -306,11 +304,17 @@ ROOT is a tree of NODEs."
     (setq p (graph-enclose (graph-pack children)))
     (setf (point-old-x p) (point-x p))
     (setf (point-old-y p) (point-y p))
-    (if graph-draw-group
-	(setf (point-r p) (+ (point-r p) 20)) 
-      ;; p is a copy of children for single node. Don't propagate the title
-      (setf (point-title p) nil))
-   (setf (point-fill p)  "none")
+    (setf (point-fill p)  "none")
+
+    (if (not graph-draw-group)
+	;; p is a copy of children for single node. Don't propagate the title
+	(setf (point-title p) nil)
+
+      (setf (point-r p) (+ (point-r p) 20))
+      (setf (point-title p)
+	    (or (if graph-draw-group-fn
+		    (funcall graph-draw-group-fn level index)
+		  (format "Level %d, %d" level index)))))    
     (setq p (make-node :value p :children nodes))
     p))
 
@@ -320,11 +324,15 @@ ROOT is a tree of NODEs."
   (let* ((w (window-pixel-width))
          (h (window-pixel-height))
 	 (inhibit-read-only t)
+	 (name (buffer-name))
 	 (image (svg-create w h)))
     (erase-buffer)
     (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
     (svg-insert-image image)
-    (svg-possibly-update-image image)
+    ;; This allows Emacs to include images using relative paths
+    ;; starting from default-directory
+    (write-file "tmp.svg")
+    (rename-buffer name)
     image))
 
 ;;;###autoload

@@ -91,8 +91,10 @@
 (defun graph-brain--tag-select (tags)
   (interactive
    (list (let ((crm-separator "[ 	]*:[ 	]*"))
-           (completing-read-multiple "Tag: " (org-roam-tag-completions)))))
-  (switch-to-buffer-other-window graph-brain--buffer)
+           (completing-read-multiple "Tag: " (org-roam-tag-completions)
+				     nil t graph-brain--tags))))
+  (if (not (get-buffer-window graph-brain--buffer))
+      (switch-to-buffer-other-window graph-brain--buffer))
   (setq graph-brain--tags tags)
   (funcall graph-brain--view))
 
@@ -100,6 +102,12 @@
   (interactive)
   (let* ((graph-draw-padding (if group-fn 0 10))
 	 image)
+    (setq graph-brain--points points
+	  graph-brain--image image)
+    (setq graph-draw-group group-fn
+          graph-draw-group-fn group-fn)
+    (setq svg-click-function 'graph-brain--open)
+
     (setq image (graph-draw-init))
     ;; (setq p (graph-draw-tree points image))
     (setq points (graph-draw--tree-convert points image))
@@ -113,12 +121,6 @@
     ;; (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
 
     (svg-possibly-update-image image)
-    ;; (graph-brain-mode)
-    (setq graph-brain--points points
-	  graph-brain--image image)
-    (setq graph-draw-group group-fn
-          graph-draw-group-fn group-fn)
-    (setq svg-click-function 'graph-brain--open)
     ))
 
 (defun graph-brain--group-tag ()
@@ -151,6 +153,10 @@
 	      (push (make-point :x 0 :y 0 :r 30
 				:old-x 0 :old-y 0
 				:fill (random-color-html)
+				:image (save-window-excursion
+					 (with-current-buffer
+					     (graph-brain--open (concat "id:" (nth 0 p)))
+					   (car (org-property-values "IMAGE"))))
 				:href (concat "id:" (nth 0 p))
 				:text (nth 1 p)
 				:title (graph-brain--shorten (nth 1 p)))
@@ -159,10 +165,13 @@
       (push points root))
     ;; (pp group)
     ;; (pp root)
-    (pp names)
+    ;; (pp names)
+    (if (= (length root) 1)
+	(setq root (car root)))
 
     (graph-brain--draw root nil (lambda (d i)
-				  (if (and (> d 0) )
+				  ;; (message "%s %s" d i)
+				  (if (> d 0)
                                       (format "#%s" (or (nth i names) "Ungrouped")))
 				  ))
     (setq graph-brain--view 'graph-brain--group-tag)
@@ -189,6 +198,10 @@
 	    pt (make-point :x 0 :y 0 :r 30
 			   :old-x 0 :old-y 0
 			   :fill (random-color-html)
+			   :image (save-window-excursion
+				    (with-current-buffer
+					(graph-brain--open (concat "id:" (nth 0 p)))
+				      (car (org-property-values "IMAGE"))))
 			   :href (concat "id:" id)
 			   :text title
 			   :title (graph-brain--shorten title)))
