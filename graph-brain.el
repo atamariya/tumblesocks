@@ -34,14 +34,15 @@
   "Split words in lines. Truncate second words onwards."
   (with-temp-buffer
     (insert title)
-    (goto-char (point-min))
-    (forward-word 2)
-    (when (> (point-max) (point))
-      (delete-region (point) (point-max))
-      (insert "..."))
-    (forward-word -2)
-    (while (re-search-forward "[ -]" nil t)
-      (replace-match "\n"))
+    (when (> (point) 10)
+      (goto-char (point-min))
+      (forward-word 2)
+      (when (> (point-max) (point))
+	(delete-region (point) (point-max))
+	(insert "..."))
+      (forward-word -2)
+      (while (re-search-forward "[ -]" nil t)
+	(replace-match "\n")))
     (buffer-string)))
 
 (defun graph-brain--search ()
@@ -125,7 +126,8 @@
    (list (let ((crm-separator "[ 	]*:[ 	]*"))
            (completing-read-multiple "Tag: " (org-roam-tag-completions)
 				     nil t graph-brain--tags))))
-  (graph-brain--refresh)
+  (let ((graph-brain--tags tags))
+    (graph-brain--refresh))
   (setq graph-brain--tags tags))
 
 (defun graph-brain--node-select-init ()
@@ -145,7 +147,7 @@
 (defun graph-brain--draw (points lines &optional group-fn)
   (interactive)
   (let* ((graph-draw-padding (if group-fn 0 10))
-	 image)
+	 image p r w root)
     (setq graph-brain--image image)
     (setq graph-draw-group group-fn
           graph-draw-group-fn group-fn)
@@ -153,41 +155,60 @@
 
     (setq image (graph-draw-init))
     ;; (setq p (graph-draw-tree points image))
-    (setq points (graph-draw--tree-convert points image))
+    (setq root (graph-draw--tree-convert points image))
     (dolist (p lines)
       (setq graph-draw-fill "red")
       (graph-draw-line image (car p) (cdr p)))
-    (graph-draw--tree-internal points image)
+    (graph-draw--tree-internal root image)
     
-    ;; (setq w (* 2 (point-r p))
-    ;; 	  h w)
-    ;; (dom-set-attribute image 'viewBox (format "-%d -%d %d %d" (/ w 2) (/ h 2) w h))    
+    (setq p (node-value root)
+	  r (point-r p)
+	  w (* 2 r))
+    ;; (dom-set-attribute image 'viewBox
+    ;; 		       (format "%d %d %d %d" (- (point-x p) r) (- (point-y p) r) w w))    
 
     (svg-possibly-update-image image)
     ))
 
 (defun graph-brain--group-tag ()
   (interactive)
-  (let* ((nodes (org-roam-db-query [:select [id title] :from nodes]))
-	 (tags  (if (not graph-brain--tags)
-		    (org-roam-db-query [:select [tag node-id] :from tags])
-		  (org-roam-db-query
+  (let* ((filter (when graph-brain--tags
 		   (vconcat
-		    [:select [tags:tag nodes:id] :from nodes
-			     :left :join tags :on (= nodes:id tags:node-id)]
-		    (vector :where (apply 'list 'and (mapcar (lambda (a) `(= tags:tag ,a))
-							     graph-brain--tags)))
-		    ))))
-	 ;; (tags  (org-roam-db-query [:select [links:type nodes:id] :from nodes
-	 ;; 				    :left :outer :join links :on (= nodes:id links:dest)
-	 ;; 				    :where (= links:type "id")]))
+		    (apply 'append
+			  (org-roam-db-query
+			   (vconcat
+			    [:select [node-id] :from tags]
+			    (vector :where (apply 'list 'and
+						  (mapcar (lambda (a) `(= tags:tag ,a))
+							  graph-brain--tags)))))))))
+	 ;; (nodes (org-roam-db-query [:select [id title] :from nodes]))
+	 ;; (tags (org-roam-db-query [:select [tag node-id] :from tags]))
+	 ;; (org-roam-db-query [:select [id title] :from nodes :where (in id ["854b72c9-5042-4362-8f23-af36a95a6180"])])
+	 (nodes (org-roam-db-query
+		 (vconcat
+		  [:select [id title] :from nodes]
+		  (when graph-brain--tags
+		    (vector :where `(in id ,filter)))
+		  )))
+	 (tags  (org-roam-db-query
+		 (vconcat
+		  [:select [tag node-id] :from tags]
+		  (when graph-brain--tags
+		    (vector :where `(and (in node-id ,filter)
+					 (not-in tag ,(vconcat graph-brain--tags)))))
+		  )))
 	 (group (make-hash-table :test 'equal))
-	 root points p names)
+	 root points p names name)
+    (setq points (mapcar 'car nodes))
     (mapc (lambda (a)
-	    (if (setq p (gethash (car a) group))
-		(puthash (car a) (cons (nth 1 a) p) group)
-	      (puthash (car a) (list (nth 1 a)) group)))
+	    (setq name (car a))
+	    (delete (nth 1 a) points)
+	    (if (setq p (gethash name group))
+		(puthash name (cons (nth 1 a) p) group)
+	      (puthash name (list (nth 1 a)) group)))
 	  tags)
+    ;; Add a new entry for top level tag
+    (puthash nil points group)
     (dolist (j (map-keys group))
       (setq points nil)
       (dolist (i (gethash j group))
