@@ -28,7 +28,7 @@
 (defvar graph-brain--view 'graph-brain--all)
 
 (defvar-local graph-brain--image nil)
-(defvar-local graph-brain--points nil)
+(defvar-local graph-brain--selection nil)
 
 (defun graph-brain--shorten (title)
   "Split words in lines. Truncate second words onwards."
@@ -68,6 +68,12 @@
     (svg-possibly-update-image image)
     ))
 
+(defun graph-brain--refresh ()
+  (if (not (get-buffer-window graph-brain--buffer))
+      (switch-to-buffer-other-window graph-brain--buffer))
+  (with-current-buffer graph-brain--buffer
+    (funcall graph-brain--view)))
+
 (defun graph-brain--open (url)
   (interactive)
   (with-temp-buffer
@@ -77,33 +83,70 @@
     (setq graph-brain--doc (current-buffer))
     ))
 
-(defun graph-brain--tag-add (tags)
-  (interactive
-   (list (let ((crm-separator "[ 	]*:[ 	]*"))
-           (completing-read-multiple "Tag: " (org-roam-tag-completions)))))
-  (let* ((points graph-brain--points))
+(defun graph-brain--node-delete ()
+  (interactive)
+  (let* ((points graph-brain--selection))
+    (or points (error "No node selected"))
+
     (dolist (p points)
-      (graph-brain--open (point-href p))
-      (with-current-buffer graph-brain--doc
-	(org-roam-tag-add tags))
-      )))
+      (with-current-buffer (graph-brain--open p)
+	(when (yes-or-no-p (format "Note %s %s.  Delete? "
+				   (buffer-name)
+				   (if (buffer-modified-p)
+				       "HAS BEEN EDITED" "is unmodified")))
+	  (delete-file (buffer-file-name))
+	  (kill-buffer))
+	))
+    (graph-brain--node-select-init)
+    (org-roam-db-sync)
+    (graph-brain--refresh)
+    ))
+
+(defun graph-brain--tag-add ()
+  (interactive)
+  (let* ((points graph-brain--selection)
+	 tags)
+    (or points (error "No node selected"))
+
+    (setq tags (let ((crm-separator "[ 	]*:[ 	]*"))
+		 (completing-read-multiple "Tag: " (org-roam-tag-completions))))
+    (dolist (p points)
+      (with-current-buffer (graph-brain--open p)
+	(org-roam-tag-add tags)
+	(save-buffer)
+      ))
+    (graph-brain--node-select-init)
+    (org-roam-db-sync)
+    (graph-brain--refresh)
+    ))
 
 (defun graph-brain--tag-select (tags)
   (interactive
    (list (let ((crm-separator "[ 	]*:[ 	]*"))
            (completing-read-multiple "Tag: " (org-roam-tag-completions)
 				     nil t graph-brain--tags))))
-  (if (not (get-buffer-window graph-brain--buffer))
-      (switch-to-buffer-other-window graph-brain--buffer))
-  (setq graph-brain--tags tags)
-  (funcall graph-brain--view))
+  (graph-brain--refresh)
+  (setq graph-brain--tags tags))
+
+(defun graph-brain--node-select-init ()
+  (interactive)
+  (setq graph-brain--selection nil))
+
+(defun graph-brain--node-select-internal (url)
+  (message "Selected %s" url)
+  (push url graph-brain--selection))
+
+(defun graph-brain--node-select (e)
+  (interactive "e")
+  (let* ((svg-click-function 'graph-brain--node-select-internal))
+    (svg-on-click e)
+    ))
 
 (defun graph-brain--draw (points lines &optional group-fn)
   (interactive)
   (let* ((graph-draw-padding (if group-fn 0 10))
 	 image)
-    (setq graph-brain--points points
-	  graph-brain--image image)
+    (setq graph-brain--image image)
     (setq graph-draw-group group-fn
           graph-draw-group-fn group-fn)
     (setq svg-click-function 'graph-brain--open)
@@ -276,10 +319,13 @@
 
 (defvar graph-brain-mode-map (let* ((map (make-sparse-keymap)))
 			       (define-key map "/" 'graph-brain--search)
+			       (define-key map "d" 'graph-brain--node-delete)
 			       (define-key map "g" 'graph-brain--group-tag)
 			       (define-key map "n" 'graph-brain--all)
 			       (define-key map "s" 'graph-brain--tag-select)
 			       (define-key map "t" 'graph-brain--tag-add)
+			       (define-key map (kbd "C-k") 'graph-brain--node-select-init)
+			       (define-key map [nil C-mouse-1] 'graph-brain--node-select)
 			       map))
 ;;;###autoload
 (define-derived-mode graph-brain-mode special-mode "Brain"
