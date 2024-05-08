@@ -276,29 +276,25 @@ ROOT is a tree of NODEs."
 	 children p nodes d)
     (setq level (or level 0))
     (setq index (or index 0))
-    (cond ((point-p root)
-	   ;; Single root node
-           (setq children (list root)
-		 nodes (list (make-node :value p))))
-          ((point-p (car root))
-	   ;; If there's an image, enclose the point in a parent so
-	   ;; that image is displayed as well as title appears on top.
-	   (mapc (lambda (a)
-		       (if (point-image a)
-			   (setf (point-r a) (+ (point-r a) 20)))
-		       (push (make-node :value a) nodes)
-		       (push a children))
-		 root)
-	  (setq children (nreverse children)))
-          (t
-           ;; Get circumscribing circle
-           (dolist (child root)
-             (setq d (1+ level)
-		   p (graph-draw--tree-convert child image d i)
-		   i (1+ i))
-             (push p nodes)
-	     (push (node-value p) children))
-           (setq children (nreverse children))))
+    (if (point-p root)
+	;; Single root node
+	(setq root (list root)))
+
+    ;; Get circumscribing circle
+    (dolist (child root)
+      (setq d (1+ level)
+	    p (if (point-p child)
+		  (progn
+		    ;; If there's an image, enlarge the point so
+		    ;; that image is displayed as well as title appears on top.
+		    (if (point-image child)
+			(setf (point-r child) (+ (point-r child) 20)))
+		    (make-node :value child))
+		(graph-draw--tree-convert child image d i))
+	    i (1+ i))
+      (push p nodes)
+      (push (node-value p) children))
+    (setq children (nreverse children))
 
     ;; Place circumscribing circle
     (setq p (graph-enclose (graph-pack children)))

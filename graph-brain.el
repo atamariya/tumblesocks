@@ -235,7 +235,12 @@
 				:title (graph-brain--shorten (nth 1 p)))
 		    points))))
       (push j names)
-      (push points root))
+      (if (and (not j) graph-brain--tags)
+	  (progn
+	    (pop names)
+	    (mapc (lambda (a) (push j names)) points)
+	    (setq root (append points root)))
+	(push points root)))
     ;; (pp group)
     ;; (pp root)
     ;; (pp names)
