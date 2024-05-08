@@ -124,10 +124,11 @@
 (defun graph-brain--tag-select (tags)
   (interactive
    (list (let ((crm-separator "[ 	]*:[ 	]*"))
-           (completing-read-multiple "Tag: " (org-roam-tag-completions)
-				     nil t graph-brain--tags))))
+           (completing-read-multiple "Tag: " (org-roam-tag-completions) nil nil
+				     (mapconcat 'identity graph-brain--tags ":")))))
   (let ((graph-brain--tags tags))
     (graph-brain--refresh))
+  ;; This line is needed if graph-brain--tags is buffer local
   (setq graph-brain--tags tags))
 
 (defun graph-brain--node-select-init ()
@@ -154,6 +155,7 @@
     (setq svg-click-function 'graph-brain--open)
 
     (setq image (graph-draw-init))
+    (when points
     ;; (setq p (graph-draw-tree points image))
     (setq root (graph-draw--tree-convert points image))
     (dolist (p lines)
@@ -168,37 +170,44 @@
     ;; 		       (format "%d %d %d %d" (- (point-x p) r) (- (point-y p) r) w w))    
 
     (svg-possibly-update-image image)
-    ))
+    )))
+
+(defun graph-brain--filter (tag &optional initial)
+  (vconcat
+   (apply 'append
+	  (org-roam-db-query
+	   (vconcat
+	    [:select [node-id] :from tags]
+	    (vector :where (if initial
+			       `(and (= tags:tag ,tag)
+				     (in node-id ,initial))
+			     `(= tags:tag ,tag))))))))
 
 (defun graph-brain--group-tag ()
   (interactive)
-  (let* ((filter (when graph-brain--tags
-		   (vconcat
-		    (apply 'append
-			  (org-roam-db-query
-			   (vconcat
-			    [:select [node-id] :from tags]
-			    (vector :where (apply 'list 'and
-						  (mapcar (lambda (a) `(= tags:tag ,a))
-							  graph-brain--tags)))))))))
+  (let* ((group (make-hash-table :test 'equal))
+	 root points p names name filter nodes tags)
 	 ;; (nodes (org-roam-db-query [:select [id title] :from nodes]))
 	 ;; (tags (org-roam-db-query [:select [tag node-id] :from tags]))
 	 ;; (org-roam-db-query [:select [id title] :from nodes :where (in id ["854b72c9-5042-4362-8f23-af36a95a6180"])])
-	 (nodes (org-roam-db-query
+    (when graph-brain--tags
+      (mapc (lambda (a)
+	      (setq filter (graph-brain--filter a filter)))
+	    graph-brain--tags))
+    (setq nodes (org-roam-db-query
 		 (vconcat
 		  [:select [id title] :from nodes]
 		  (when graph-brain--tags
 		    (vector :where `(in id ,filter)))
-		  )))
-	 (tags  (org-roam-db-query
+		  ))
+	  tags  (org-roam-db-query
 		 (vconcat
 		  [:select [tag node-id] :from tags]
 		  (when graph-brain--tags
 		    (vector :where `(and (in node-id ,filter)
 					 (not-in tag ,(vconcat graph-brain--tags)))))
 		  )))
-	 (group (make-hash-table :test 'equal))
-	 root points p names name)
+
     (setq points (mapcar 'car nodes))
     (mapc (lambda (a)
 	    (setq name (car a))
