@@ -93,8 +93,19 @@
 
 (defun graph-brain--node-delete ()
   (interactive)
-  (let* ((points graph-brain--selection))
+  (let* ((points graph-brain--selection)
+	 filter)
     (or points (error "No node selected"))
+
+    (when (eq graph-brain--view 'graph-brain--view-tag)
+      (mapc (lambda (a)
+	      (let* ((tmp (split-string a ":"))
+		     (tag (nth 1 tmp)))
+		(delete tag graph-brain--tags)
+		(setq filter (graph-brain--filter-internal tag))))
+	    points)
+      (setq points (mapcar (lambda (a) (concat "id:" a))
+			   filter)))
 
     (dolist (p points)
       (with-current-buffer (graph-brain--open p)
@@ -184,7 +195,7 @@
     (svg-possibly-update-image image)
     )))
 
-(defun graph-brain--filter (tag &optional initial)
+(defun graph-brain--filter-internal (tag &optional initial)
   (vconcat
    (apply 'append
 	  (org-roam-db-query
@@ -195,6 +206,14 @@
 				     (in node-id ,initial))
 			     `(= tags:tag ,tag))))))))
 
+(defun graph-brain--filter ()
+  (let* (filter)
+    (when graph-brain--tags
+      (mapc (lambda (a)
+	      (setq filter (graph-brain--filter-internal a filter)))
+	    graph-brain--tags))
+    filter))
+
 (defun graph-brain--view-group ()
   (interactive)
   (let* ((group (make-hash-table :test 'equal))
@@ -202,10 +221,7 @@
 	 ;; (nodes (org-roam-db-query [:select [id title] :from nodes]))
 	 ;; (tags (org-roam-db-query [:select [tag node-id] :from tags]))
 	 ;; (org-roam-db-query [:select [id title] :from nodes :where (in id ["854b72c9-5042-4362-8f23-af36a95a6180"])])
-    (when graph-brain--tags
-      (mapc (lambda (a)
-	      (setq filter (graph-brain--filter a filter)))
-	    graph-brain--tags))
+    (setq filter (graph-brain--filter))
     (setq nodes (org-roam-db-query
 		 (vconcat
 		  [:select [id title] :from nodes]
@@ -308,26 +324,22 @@
 
 (defun graph-brain--view-tag ()
   (interactive)
-  (let* (filter nodes points title pt id)
-    (when graph-brain--tags
-      (mapc (lambda (a)
-	      (setq filter (graph-brain--filter a filter)))
-	    graph-brain--tags))
+  (let* (filter nodes points title pt)
+    (setq filter (graph-brain--filter))
     (setq nodes (org-roam-db-query
 		 (vconcat
-		  [:select :distinct [tag tag] :from tags]
+		  [:select :distinct [tag] :from tags]
 		  (when graph-brain--tags
 		    (vector :where `(and (in node-id ,filter)
 					 (not-in tag ,(vconcat graph-brain--tags)))))
 		  )))
 
     (dolist (p nodes)
-      (setq title (nth 1 p)
-	    id (nth 0 p)
+      (setq title (nth 0 p)
 	    pt (make-point :x 0 :y 0 :r 30
 			   :old-x 0 :old-y 0
 			   :fill (random-color-html)
-			   :href (concat "tag:" id)
+			   :href (concat "tag:" title)
 			   :text title
 			   :title (graph-brain--shorten title)))
       (push pt points))

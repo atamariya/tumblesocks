@@ -267,7 +267,7 @@ ROOT is a tree of NODEs."
 	(graph-draw--tree-internal i image offset1))
 
       (svg-possibly-update-image image)
-      (sit-for .01)
+      ;; (sit-for .01)
       )))
 
 (defun graph-draw--tree-convert (root image &optional level index)
