@@ -25,7 +25,7 @@
 (defvar graph-brain--doc nil)
 (defvar graph-brain--buffer nil)
 (defvar graph-brain--tags nil)
-(defvar graph-brain--view 'graph-brain--all)
+(defvar graph-brain--view 'graph-brain--view-node)
 
 (defvar-local graph-brain--image nil)
 (defvar-local graph-brain--selection nil)
@@ -77,12 +77,19 @@
 
 (defun graph-brain--open (url)
   (interactive)
+  (cond ((string-prefix-p "tag:" url)
+	 (setq graph-brain--tags
+	       (if graph-brain--tags
+		   (append graph-brain--tags (list (substring url 4)))
+		 (push (substring url 4) graph-brain--tags)))
+	 (graph-brain--refresh))
+	(t
   (with-temp-buffer
     (insert url)
     (forward-char -1)
     (org-open-at-point)
     (setq graph-brain--doc (current-buffer))
-    ))
+    ))))
 
 (defun graph-brain--node-delete ()
   (interactive)
@@ -131,6 +138,11 @@
   ;; This line is needed if graph-brain--tags is buffer local
   (setq graph-brain--tags tags))
 
+(defun graph-brain--tag-deselect ()
+  (interactive)
+  (setq graph-brain--tags (butlast graph-brain--tags))  
+  (graph-brain--refresh))
+
 (defun graph-brain--node-select-init ()
   (interactive)
   (setq graph-brain--selection nil))
@@ -145,7 +157,7 @@
     (svg-on-click e)
     ))
 
-(defun graph-brain--draw (points lines &optional group-fn)
+(defun graph-brain--draw (points &optional lines group-fn)
   (interactive)
   (let* ((graph-draw-padding (if group-fn 0 10))
 	 image p r w root)
@@ -183,7 +195,7 @@
 				     (in node-id ,initial))
 			     `(= tags:tag ,tag))))))))
 
-(defun graph-brain--group-tag ()
+(defun graph-brain--view-group ()
   (interactive)
   (let* ((group (make-hash-table :test 'equal))
 	 root points p names name filter nodes tags)
@@ -238,7 +250,7 @@
       (if (and (not j) graph-brain--tags)
 	  (progn
 	    (pop names)
-	    (mapc (lambda (a) (push j names)) points)
+	    (mapc (lambda (_a) (push j names)) points)
 	    (setq root (append points root)))
 	(push points root)))
     ;; (pp group)
@@ -252,10 +264,10 @@
 				  (if (> d 0)
                                       (format "#%s" (or (nth i names) "Ungrouped")))
 				  ))
-    (setq graph-brain--view 'graph-brain--group-tag)
+    (setq graph-brain--view 'graph-brain--view-group)
     ))
 
-(defun graph-brain--all ()
+(defun graph-brain--view-node ()
   (interactive)
   (let* ((nodes (if (not graph-brain--tags)
 		    (org-roam-db-query [:select [id title] :from nodes])
@@ -291,7 +303,38 @@
 		  (gethash (cadr p) group))
 	    lines))
     (graph-brain--draw points lines)
-    (setq graph-brain--view 'graph-brain--all)
+    (setq graph-brain--view 'graph-brain--view-node)
+    ))
+
+(defun graph-brain--view-tag ()
+  (interactive)
+  (let* (filter nodes points title pt id)
+    (when graph-brain--tags
+      (mapc (lambda (a)
+	      (setq filter (graph-brain--filter a filter)))
+	    graph-brain--tags))
+    (setq nodes (org-roam-db-query
+		 (vconcat
+		  [:select :distinct [tag tag] :from tags]
+		  (when graph-brain--tags
+		    (vector :where `(and (in node-id ,filter)
+					 (not-in tag ,(vconcat graph-brain--tags)))))
+		  )))
+
+    (dolist (p nodes)
+      (setq title (nth 1 p)
+	    id (nth 0 p)
+	    pt (make-point :x 0 :y 0 :r 30
+			   :old-x 0 :old-y 0
+			   :fill (random-color-html)
+			   :href (concat "tag:" id)
+			   :text title
+			   :title (graph-brain--shorten title)))
+      (push pt points))
+    ;; (pp points)
+    
+    (graph-brain--draw points)
+    (setq graph-brain--view 'graph-brain--view-tag)
     ))
 
 (defun graph--firefox-bookmarks-list (tag)
@@ -352,16 +395,20 @@
 	  graph-brain--doc group)    
     ))
 
-(defvar graph-brain-mode-map (let* ((map (make-sparse-keymap)))
-			       (define-key map "/" 'graph-brain--search)
-			       (define-key map "d" 'graph-brain--node-delete)
-			       (define-key map "g" 'graph-brain--group-tag)
-			       (define-key map "n" 'graph-brain--all)
-			       (define-key map "s" 'graph-brain--tag-select)
-			       (define-key map "t" 'graph-brain--tag-add)
-			       (define-key map (kbd "C-k") 'graph-brain--node-select-init)
-			       (define-key map [nil C-mouse-1] 'graph-brain--node-select)
-			       map))
+(defvar graph-brain-mode-map
+  (let* ((map (make-sparse-keymap)))
+    (define-key map "/" 'graph-brain--search)
+    (define-key map "d" 'graph-brain--node-delete)
+    (define-key map "g" 'graph-brain--view-group)
+    (define-key map "n" 'graph-brain--view-node)
+    (define-key map "T" 'graph-brain--view-tag)
+    (define-key map "s" 'graph-brain--tag-select)
+    (define-key map "l" 'graph-brain--tag-deselect)
+    (define-key map "t" 'graph-brain--tag-add)
+    (define-key map (kbd "C-k") 'graph-brain--node-select-init)
+    (define-key map [nil C-mouse-1] 'graph-brain--node-select)
+    map))
+
 ;;;###autoload
 (define-derived-mode graph-brain-mode special-mode "Brain"
   "Major mode for managing graph-brain."
