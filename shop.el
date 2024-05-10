@@ -211,7 +211,9 @@
 	  (id desc brand w img price)
 	  keys-item
 	  prod
+	  ;; (message "%s %s %s %s %s %s" id desc brand w img price)
 	  (when (eq service 'bb)
+	    (if (eq price :null) (setq price nil))
 	    (when (string-match (concat "\\([0-9]+\\) ?x ?" re-num) w)
 	      (setq mult (* mult (string-to-number (match-string 1 w)))
 		    w (format "%s %s" (match-string 2 w) (match-string 4 w))))

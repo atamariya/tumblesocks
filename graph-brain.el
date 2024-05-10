@@ -285,19 +285,17 @@
 
 (defun graph-brain--view-node ()
   (interactive)
-  (let* ((nodes (if (not graph-brain--tags)
-		    (org-roam-db-query [:select [id title] :from nodes])
-		  (org-roam-db-query
-		   (vconcat
-		    [:select [nodes:id nodes:title tags:tag] :from nodes
-			     :left :join tags :on (= nodes:id tags:node-id)]
-		    (vector :where (apply 'list 'and (mapcar (lambda (a) `(= tags:tag ,a))
-							     graph-brain--tags)))
-		    ))))
-	 (links (org-roam-db-query [:select [source dest] :from links
+  (let* ((group (make-hash-table :test 'equal))
+	 filter nodes links points title pt id lines)
+    (setq filter (graph-brain--filter))
+    (setq nodes (org-roam-db-query
+		 (vconcat
+		  [:select [id title] :from nodes]
+		  (when graph-brain--tags
+		    (vector :where `(in id ,filter)))
+		  ))
+	  links (org-roam-db-query [:select [source dest] :from links
 					    :where (= type "id")]))
-	 (group (make-hash-table :test 'equal))
-	 points title pt id lines)
     (dolist (p nodes)
       (setq title (nth 1 p)
 	    id (nth 0 p)
