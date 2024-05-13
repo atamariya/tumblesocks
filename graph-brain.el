@@ -216,14 +216,19 @@
 
 (defun graph-brain--view-wheel ()
   (interactive)
-  (let* (filter nodes points title pt id lines)
+  (let* ((group (make-hash-table :test 'equal))
+	 filter nodes points title pt id lines)
     (setq filter (graph-brain--filter))
-    (setq nodes (org-roam-db-query
+    (setq files (org-roam-db-query
 		 (vconcat
-		  [:select [id title] :from nodes]
+		  [:select [hash mtime] :from files]
 		  (when graph-brain--tags
-		    (vector :where `(in id ,filter)))
+		    (vector :where `(in hash ,filter)))
 		  )))
+    (dolist (p files)
+      (push (list (format-time-string "%Y-%m-%d" (nth 1 p))
+		  (format-time-string "%Y-%m-%d" (nth 1 p)))
+	    nodes))
     (dolist (p nodes)
       (setq title (nth 1 p)
 	    id (nth 0 p)
