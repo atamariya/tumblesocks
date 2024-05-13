@@ -37,7 +37,7 @@
     (when (> (point) 10)
       (goto-char (point-min))
       (forward-word 2)
-      (when (> (point-max) (point))
+      (when (> (- (point-max) (point)) 3)
 	(delete-region (point) (point-max))
 	(insert "..."))
       (forward-word -2)
@@ -214,6 +214,37 @@
 	    graph-brain--tags))
     filter))
 
+(defun graph-brain--view-wheel ()
+  (interactive)
+  (let* (filter nodes points title pt id lines)
+    (setq filter (graph-brain--filter))
+    (setq nodes (org-roam-db-query
+		 (vconcat
+		  [:select [id title] :from nodes]
+		  (when graph-brain--tags
+		    (vector :where `(in id ,filter)))
+		  )))
+    (dolist (p nodes)
+      (setq title (nth 1 p)
+	    id (nth 0 p)
+	    pt (make-point :x 0 :y 0 :r 30
+			   :old-x 0 :old-y 0
+			   :fill (random-color-html)
+			   ;; :image (save-window-excursion
+			   ;; 	    (with-current-buffer
+			   ;; 		(graph-brain--open (concat "id:" (nth 0 p)))
+			   ;; 	      (car (org-property-values "IMAGE"))))
+			   :href (concat "id:" id)
+			   :text title
+			   :title (graph-brain--shorten title)))
+      (push (cons pt (car points)) lines)
+      (push pt points))
+    ;; (pp points)
+
+    (graph-brain--draw points lines)
+    (setq graph-brain--view 'graph-brain--view-wheel)
+    ))
+
 (defun graph-brain--view-group ()
   (interactive)
   (let* ((group (make-hash-table :test 'equal))
@@ -322,22 +353,25 @@
 
 (defun graph-brain--view-tag ()
   (interactive)
-  (let* (filter nodes points title pt)
+  (let* (filter nodes points tag title pt r)
     (setq filter (graph-brain--filter))
     (setq nodes (org-roam-db-query
 		 (vconcat
-		  [:select :distinct [tag] :from tags]
+		  [:select [tag (funcall count tag)] :from tags]
 		  (when graph-brain--tags
 		    (vector :where `(and (in node-id ,filter)
 					 (not-in tag ,(vconcat graph-brain--tags)))))
+		  [:group-by tag]
 		  )))
 
     (dolist (p nodes)
-      (setq title (nth 0 p)
-	    pt (make-point :x 0 :y 0 :r 30
+      (setq tag (nth 0 p)
+	    r (nth 1 p)
+	    title (format "%s (%d)" tag r)
+	    pt (make-point :x 0 :y 0 :r (+ 30 r)
 			   :old-x 0 :old-y 0
 			   :fill (random-color-html)
-			   :href (concat "tag:" title)
+			   :href (concat "tag:" tag)
 			   :text title
 			   :title (graph-brain--shorten title)))
       (push pt points))
@@ -409,6 +443,7 @@
   (let* ((map (make-sparse-keymap)))
     (define-key map "/" 'graph-brain--search)
     (define-key map "d" 'graph-brain--node-delete)
+    (define-key map "w" 'graph-brain--view-wheel)
     (define-key map "g" 'graph-brain--view-group)
     (define-key map "n" 'graph-brain--view-node)
     (define-key map "T" 'graph-brain--view-tag)
