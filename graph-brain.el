@@ -227,45 +227,62 @@
 
 (defun graph-brain--view-wheel ()
   (interactive)
-  (let* ((group (make-hash-table :test 'equal))
-	 filter nodes points title pt id lines files name v fmt)
+  (let* (group filter nodes points title pt id lines files name v fmt flag)
     (setq filter (graph-brain--filter))
     (setq files (org-roam-db-query
 		 (vconcat
-		  [:select [hash mtime] :from files]
+		  [:select [file mtime] :from files]
 		  (when graph-brain--tags
 		    (vector :where `(in hash ,filter)))
 		  )))
+    (while (and (or (not nodes) (= (length nodes) 1))
+		(not flag))
+      (when (= (length nodes) 1)
+	(setq graph-brain--time
+	      (if graph-brain--time
+		  (append graph-brain--time nodes)
+		nodes)))
     ;; (id . name)
     (setq fmt (pcase (length graph-brain--time)
 		(0 '("%Y" . "%Y"))
 		(1 '("%Y-%m" . "%B"))
 		(2 '("%Y-%m-%d" . "%d"))
 		(3 '("%Y-%m-%d %H" . "%H"))
-		(_ (setq graph-brain--time (butlast graph-brain--time 2))
-		   nil)))
+		(_  (setq flag t)
+		   '("%Y-%m-%d %H" . "%H")))
+	  filter (car (last graph-brain--time)))
+
+    (setq group (make-hash-table :test 'equal))
     (dolist (p files)
-      (setq name (format-time-string (car fmt) (nth 1 p))
-	    v (list name (format-time-string (cdr fmt) (nth 1 p)) p))
-      (if (setq p (gethash name group))
-	  (puthash name (cons v p) group)
-	(puthash name (list v) group)))
-    
-    ;; (when (> (hash-table-count group) 1)
-    ;;   (setq group (make-hash-table :test 'equal))
-    ;;   (dolist (p files)
-    ;; 	(setq name (format-time-string "%M" (nth 1 p))
-    ;; 	      v (list (format-time-string "%M" (nth 1 p)) p))
-    ;; 	(if (setq p (gethash name group))
-    ;; 	    (puthash name (cons v p) group)
-    ;; 	  (puthash name (list v) group))))
+      (setq name (format-time-string (car fmt) (nth 1 p)))
+      (when (or (not flag) (string= filter name))
+	(setq v (list name (format-time-string (cdr fmt) (nth 1 p)) p))
+	(if (setq p (gethash name group))
+	    (puthash name (cons v p) group)
+	  (puthash name (list v) group))))
 
     (setq nodes (hash-table-keys group))
+
+    (when flag
+      ;; Render leaves
+      (setq filter (vconcat (mapcar (lambda (a)
+				      (car (nth 2 a)))
+				    (gethash (car (last graph-brain--time)) group))))
+      (setq nodes (org-roam-db-query
+		   (vconcat
+		    [:select [id title] :from nodes]
+		    (vector :where `(in file ,filter)))
+		   ))
+      ))
     (dolist (p nodes)
-      (setq id p
-	    v (gethash p group)
-	    title (format "%s (%d)" (nth 1 (car v)) (length v))
-	    pt (make-point :x 0 :y 0 :r 30
+      (if flag
+	  (setq id (nth 0 p)
+		title (nth 1 p))
+	(setq id p
+	      v (gethash p group)
+	      title (format "%s (%d)" (nth 1 (car v)) (length v))))
+      
+      (setq pt (make-point :x 0 :y 0 :r 30
 			   :old-x 0 :old-y 0
 			   :fill (random-color-html)
 			   ;; :image (save-window-excursion
@@ -279,9 +296,10 @@
       (push pt points))
     ;; (pp points)
 
-    (graph-brain--draw points lines (lambda (_d _i)
-				      (format "%s" (or (car (last graph-brain--time))
-						       "Timeline"))))
+    (graph-brain--draw points (if (not flag) lines)
+		       (lambda (_d _i)
+			 (format "%s" (or (car (last graph-brain--time))
+					  "Timeline"))))
     (setq graph-brain--view 'graph-brain--view-wheel)
     ))
 
