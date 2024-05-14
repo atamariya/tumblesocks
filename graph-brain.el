@@ -26,6 +26,7 @@
 (defvar graph-brain--buffer nil)
 (defvar graph-brain--tags nil)
 (defvar graph-brain--view 'graph-brain--view-node)
+(defvar graph-brain--time nil)
 
 (defvar-local graph-brain--image nil)
 (defvar-local graph-brain--selection nil)
@@ -82,6 +83,12 @@
 	       (if graph-brain--tags
 		   (append graph-brain--tags (list (substring url 4)))
 		 (push (substring url 4) graph-brain--tags)))
+	 (graph-brain--refresh))
+	((string-prefix-p "time:" url)
+	 (setq graph-brain--time
+	       (if graph-brain--time
+		   (append graph-brain--time (list (substring url 5)))
+		 (push (substring url 5) graph-brain--time)))
 	 (graph-brain--refresh))
 	(t
   (with-temp-buffer
@@ -149,9 +156,13 @@
   ;; This line is needed if graph-brain--tags is buffer local
   (setq graph-brain--tags tags))
 
-(defun graph-brain--tag-deselect ()
+(defun graph-brain--deselect ()
   (interactive)
-  (setq graph-brain--tags (butlast graph-brain--tags))  
+  (pcase graph-brain--view
+    ('graph-brain--view-tag
+     (setq graph-brain--tags (butlast graph-brain--tags)))
+    ('graph-brain--view-wheel
+     (setq graph-brain--time (butlast graph-brain--time))))
   (graph-brain--refresh))
 
 (defun graph-brain--node-select-init ()
@@ -217,7 +228,7 @@
 (defun graph-brain--view-wheel ()
   (interactive)
   (let* ((group (make-hash-table :test 'equal))
-	 filter nodes points title pt id lines)
+	 filter nodes points title pt id lines files name v fmt)
     (setq filter (graph-brain--filter))
     (setq files (org-roam-db-query
 		 (vconcat
@@ -225,13 +236,35 @@
 		  (when graph-brain--tags
 		    (vector :where `(in hash ,filter)))
 		  )))
+    ;; (id . name)
+    (setq fmt (pcase (length graph-brain--time)
+		(0 '("%Y" . "%Y"))
+		(1 '("%Y-%m" . "%B"))
+		(2 '("%Y-%m-%d" . "%d"))
+		(3 '("%Y-%m-%d %H" . "%H"))
+		(_ (setq graph-brain--time (butlast graph-brain--time 2))
+		   nil)))
     (dolist (p files)
-      (push (list (format-time-string "%Y-%m-%d" (nth 1 p))
-		  (format-time-string "%Y-%m-%d" (nth 1 p)))
-	    nodes))
+      (setq name (format-time-string (car fmt) (nth 1 p))
+	    v (list name (format-time-string (cdr fmt) (nth 1 p)) p))
+      (if (setq p (gethash name group))
+	  (puthash name (cons v p) group)
+	(puthash name (list v) group)))
+    
+    ;; (when (> (hash-table-count group) 1)
+    ;;   (setq group (make-hash-table :test 'equal))
+    ;;   (dolist (p files)
+    ;; 	(setq name (format-time-string "%M" (nth 1 p))
+    ;; 	      v (list (format-time-string "%M" (nth 1 p)) p))
+    ;; 	(if (setq p (gethash name group))
+    ;; 	    (puthash name (cons v p) group)
+    ;; 	  (puthash name (list v) group))))
+
+    (setq nodes (hash-table-keys group))
     (dolist (p nodes)
-      (setq title (nth 1 p)
-	    id (nth 0 p)
+      (setq id p
+	    v (gethash p group)
+	    title (format "%s (%d)" (nth 1 (car v)) (length v))
 	    pt (make-point :x 0 :y 0 :r 30
 			   :old-x 0 :old-y 0
 			   :fill (random-color-html)
@@ -239,14 +272,16 @@
 			   ;; 	    (with-current-buffer
 			   ;; 		(graph-brain--open (concat "id:" (nth 0 p)))
 			   ;; 	      (car (org-property-values "IMAGE"))))
-			   :href (concat "id:" id)
+			   :href (concat "time:" id)
 			   :text title
 			   :title (graph-brain--shorten title)))
       (push (cons pt (car points)) lines)
       (push pt points))
     ;; (pp points)
 
-    (graph-brain--draw points lines)
+    (graph-brain--draw points lines (lambda (_d _i)
+				      (format "%s" (or (car (last graph-brain--time))
+						       "Timeline"))))
     (setq graph-brain--view 'graph-brain--view-wheel)
     ))
 
@@ -453,7 +488,7 @@
     (define-key map "n" 'graph-brain--view-node)
     (define-key map "T" 'graph-brain--view-tag)
     (define-key map "s" 'graph-brain--tag-select)
-    (define-key map "l" 'graph-brain--tag-deselect)
+    (define-key map "l" 'graph-brain--deselect)
     (define-key map "t" 'graph-brain--tag-add)
     (define-key map (kbd "C-k") 'graph-brain--node-select-init)
     (define-key map [nil C-mouse-1] 'graph-brain--node-select)
