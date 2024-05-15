@@ -327,8 +327,9 @@ ROOT is a tree of NODEs."
     (svg-insert-image image)
     ;; This allows Emacs to include images using relative paths
     ;; starting from default-directory
-    (write-file "tmp.svg")
-    (rename-buffer name)
+    (when (not (buffer-file-name))
+      (write-file "tmp.svg")
+      (rename-buffer name))
     image))
 
 ;;;###autoload
