@@ -470,31 +470,18 @@
 
 (defun graph-brain--view-wheel-git ()
   (interactive)
-  (let* ((data (find-file-noselect "~/work/git-log.txt"))
-	 group filter nodes points title pt id lines files tmp name v fmt flag r)
-    ;; (with-current-buffer data
-    ;;   (goto-char (point-min))
-    ;;   (while (not (eobp))
-    ;; 	(message "%s" (current-line))
-    ;; 	(let ((p (point))
-    ;; 	      line)
-    ;; 	   (end-of-line)
-    ;; 	   (setq line (split-string (buffer-substring p (point)) ","))
-    ;; 	   (push (list (nth 0 line)
-    ;; 		       (parse-time-string (nth 1 line)))
-    ;; 		 files)
-    ;; 	   (forward-char))))
-
+  (let* (group filter nodes points title pt id lines files tmp name v fmt flag r)
     (catch 'node-view
-      (while (and ;files
-	      ;; (not flag)
+      (while (and (not flag)
 		  (or (not nodes)
 		      (and (= (length nodes) 1)
 			   (not graph-brain--back))))
 	(when (= (length nodes) 1)
-	  (push (car nodes) graph-brain--time))
+	  (push (caar nodes) graph-brain--time))
 
 	(setq r (length graph-brain--time)
+	      flag (> r 2)
+	      nodes nil
 	      fmt (or (graph-brain--get-date-format r)
 		      (and (setq flag t)
 			   '("%Y-%m-%d %H" . "%H")))
@@ -507,7 +494,7 @@
 		(message "%s" time)
 		(setq n (string-trim
 			 (shell-command-to-string
-			  (format "git rev-list --count --all --after='%s' --before='%s'"
+			  (format "git rev-list --count --all --after='%s-01-01' --before='%s-01-01'"
 				  (1- time) time)))
 		      s (format "%s" time)
 		      time (1- time))
@@ -522,20 +509,28 @@
 	      (2 (setq after  "%s-%02d 00:00"
 		       before "%s-%02d 24:00"
 		       j 31))
-	      (3 (setq after  "%s %02d:00"
-		       before "%s %02d:00"
-		       j 24)))
+	      (_ (setq after  "%s 00:00"
+		       before "%s 23:00"
+		       flag t
+		       j 1)))
 	    (dotimes (i j)
 	      (setq time (format after  filter (1+ i))
-		    cmd (format "git rev-list --count --all --after='%s' --before='%s'"
+		    cmd (format (concat "git"
+					(if flag " log --format='%%h %%s %%D (%%an)'"
+					   " rev-list --count --all")
+					" --after='%s' --before='%s'")
 				time (format before filter (1+ i))))
 	      (setq n (string-trim
 		       (shell-command-to-string cmd)))
 	      (message "%s %s" cmd n)
 	      (when (not (string= n "0"))
+		(if flag
+		    (mapc (lambda (a)
+			    (push (list a a n) nodes))
+			  (split-string n "\n"))
 		(setq id (format-time-string (car fmt) (date-to-time time))
 		      title (format-time-string (cdr fmt) (date-to-time time)))
-		(push (list id title n) nodes))))
+		(push (list id title n) nodes)))))
 	;; (if flag (throw 'node-view t))
 	))
 
@@ -562,22 +557,11 @@
       (push pt points))
     ;; (pp points)
 
-    (graph-brain--draw points (if (not flag) lines)
+    (graph-brain--draw points lines
 		       (lambda (_d _i)
 			 (format "%s" (or (car graph-brain--time)
 					  "Timeline")))))
 
-    (when nil ;flag
-      ;; Render leaves
-      (setq filter (vconcat (mapcar (lambda (a)
-				      (car (nth 2 a)))
-				    (gethash (car graph-brain--time) group))))
-      (setq nodes (org-roam-db-query
-		   (vconcat
-		    [:select [id title] :from nodes]
-		    (vector :where `(in file ,filter)))
-		   ))
-      (graph-brain--view-node nodes))
     (setq graph-brain--view 'graph-brain--view-wheel-git
 	  graph-brain--back nil)
     ))
