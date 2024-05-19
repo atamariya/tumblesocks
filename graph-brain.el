@@ -87,7 +87,11 @@
 	 (graph-brain--refresh))
 	((string-prefix-p "time:" url)
 	 (let ((name (substring url 5)))
-	   (if (< (length graph-brain--time) 4)
+	   (if (or (and (eq graph-brain--view 'graph-brain--view-wheel-git)
+			(< (length graph-brain--time) 4))
+		   (and (eq graph-brain--view 'graph-brain--view-git-log)
+			(not graph-brain--time))
+		   (eq graph-brain--view 'graph-brain--view-wheel))
 	       (push name graph-brain--time)))
 	 (graph-brain--refresh))
 	((string-prefix-p "rev:" url)
@@ -164,7 +168,7 @@
   (pcase graph-brain--view
     ('graph-brain--view-tag
      (setq graph-brain--tags (butlast graph-brain--tags)))
-    ('graph-brain--view-wheel-git
+    ((or 'graph-brain--view-wheel-git 'graph-brain--view-git-log)
      (pop graph-brain--time))
     ('graph-brain--view-wheel
      (pop graph-brain--time)))
@@ -257,9 +261,12 @@
       (while (and files
 		  (or (not nodes)
 		      (and (= (length nodes) 1)
-			   (not graph-brain--back))))
+			   ;; (not graph-brain--back)
+			   )))
 	(when (= (length nodes) 1)
-	  (push (car nodes) graph-brain--time))
+	  (if graph-brain--back
+	      (pop graph-brain--time)
+	    (push (car nodes) graph-brain--time)))
 
 	(setq r (length graph-brain--time)
 	      fmt (or (graph-brain--get-date-format r)
@@ -471,24 +478,31 @@
     (setq graph-brain--view 'graph-brain--view-tag)
     ))
 
-(defun graph-brain--view-wheel-git ()
+(defun graph-brain--view-wheel-git (&optional show-branches)
   (interactive)
   (let* ((group (make-hash-table :test 'equal))
+	 (repo (string-trim
+		(shell-command-to-string "git remote get-url origin")))
 	 filter nodes points title pt id lines fmt flag r log branch color)
-    (while (and (or (not nodes)
+    (while (and (not log)
+		(or (not nodes)
 		    (and (= (length nodes) 1)
 			 (not flag)
-			 (not graph-brain--back))))
+			 ;; (not graph-brain--back)
+			 )))
       (when (= (length nodes) 1)
-	(push (caar nodes) graph-brain--time))
+	(if graph-brain--back
+	    (pop graph-brain--time)
+	  (push (caar nodes) graph-brain--time)))
 
       (setq r (length graph-brain--time)
 	    flag (> r 2)
 	    nodes nil
 	    fmt (graph-brain--get-date-format r)
 	    filter (car graph-brain--time))
-      (setq log (>= r 1))
+      (setq log (and show-branches (>= r 1)))
       (if log (setq r 0
+		    flag t
 		    branch (string-trim
 			    (shell-command-to-string "git branch --show-current"))))
 
@@ -510,10 +524,9 @@
 		   j 1)))
 	(setq i (if (= r 0) time j)
 	      k (if (= r 0) 1 0))
-	(if log (setq flag t))
-	(while (and (and (= r 0) (not (member n '("" "0"))))
-		    (and flag (numberp time))
-		    (> i 0))
+	(while (if log (numberp time)
+		 (if (= r 0) (not (member n '("" "0")))
+		   (> i 0)))
 	  (setq time (format after  filter i)
 		cmd (format (concat "git"
 				    (if flag " log --format='%%h\t%%s (%%an)\t%%D\t;'"
@@ -522,7 +535,7 @@
 			    time (format before filter (+ i k))))
 	  (setq n (string-trim
 		   (shell-command-to-string cmd)))
-	  (message "%s %s" cmd n)
+	  ;; (message "%s %s" cmd n)
 	  (setq i (1- i))
 	  (when (not (member n '("" "0")))
 	    (if flag
@@ -567,12 +580,17 @@
 
     (graph-brain--draw points lines
 		       (lambda (_d _i)
-			 (format "%s" (or (car graph-brain--time)
-					  "Timeline"))))
+			 (format "%s\n%s" (or (car graph-brain--time) "Timeline")
+				 repo)))
 
     (setq graph-brain--view 'graph-brain--view-wheel-git
 	  graph-brain--back nil)
     ))
+
+(defun graph-brain--view-git-log ()
+  (interactive)
+  (graph-brain--view-wheel-git t)
+  (setq graph-brain--view 'graph-brain--view-git-log))
 
 (defun graph--firefox-bookmarks-list (tag)
   (let* ((buf (get-buffer-create "*bookmarks*")))
