@@ -473,7 +473,8 @@
 
 (defun graph-brain--view-wheel-git ()
   (interactive)
-  (let* (filter nodes points title pt id lines fmt flag r)
+  (let* ((group (make-hash-table :test 'equal))
+	 filter nodes points title pt id lines fmt flag r log branch color)
     (while (and (or (not nodes)
 		    (and (= (length nodes) 1)
 			 (not flag)
@@ -486,11 +487,15 @@
 	    nodes nil
 	    fmt (graph-brain--get-date-format r)
 	    filter (car graph-brain--time))
+      (setq log (>= r 1))
+      (if log (setq r 0
+		    branch (string-trim
+			    (shell-command-to-string "git branch --show-current"))))
 
       (let (i j k before after time id title n cmd)
 	(pcase r
 	  (0 (setq after  "%s%s-01-01 00:00"
-		   time (nth 5 (decode-time))
+		   time (if log (string-to-number filter) (nth 5 (decode-time)))
 		   filter ""
 		   before "%s%s-01-01 00:00"))
 	  (1 (setq after  "%s-%02d-01 00:00"
@@ -505,22 +510,30 @@
 		   j 1)))
 	(setq i (if (= r 0) time j)
 	      k (if (= r 0) 1 0))
-	(while (if (= r 0) (not (string= n "0")) (> i 0))
+	(if log (setq flag t))
+	(while (and (and (= r 0) (not (member n '("" "0"))))
+		    (and flag (numberp time))
+		    (> i 0))
 	  (setq time (format after  filter i)
 		cmd (format (concat "git"
-				    (if flag " log --format='%%h %%s %%D (%%an)'"
+				    (if flag " log --format='%%h\t%%s (%%an)\t%%D\t;'"
 				      " rev-list --count --all")
 				    " --after='%s' --before='%s'")
 			    time (format before filter (+ i k))))
 	  (setq n (string-trim
 		   (shell-command-to-string cmd)))
-	  ;; (message "%s %s" cmd n)
+	  (message "%s %s" cmd n)
 	  (setq i (1- i))
-	  (when (not (string= n "0"))
+	  (when (not (member n '("" "0")))
 	    (if flag
 		(mapc (lambda (a)
-			(setq id (substring a 0 (string-match-p " " a)))
-			(push (list id a 1) nodes))
+			(setq lines (split-string a "\t")) 
+			(if (string-empty-p (nth 2 lines))
+			    (setf (nth 2 lines) branch)
+			  (setq branch (nth 2 lines)))
+			(if (not (gethash branch group))
+			    (puthash branch (random-color-html) group))
+			(push lines nodes))
 		      (split-string n "\n"))
 	      (setq id (format-time-string (car fmt) (date-to-time time))
 		    title (format-time-string (cdr fmt) (date-to-time time)))
@@ -528,18 +541,23 @@
 	(when (> r 0)
 	  (setq nodes (nreverse nodes)))))
 
+    (setq lines nil)
     (dolist (p nodes)
-      (if flag
-	  (setq id (nth 0 p)
-		r 1
-		title (nth 1 p))
+	(if flag
+	    (progn	      
+	      (setq id (nth 0 p)
+		    r 1
+		    branch (nth 2 p)
+		    color (gethash branch group)
+		    title (format "%s\n(%s)" (nth 1 p) branch)))
 	(setq id (nth 0 p)
 	      r (string-to-number (nth 2 p))
+	      color (random-color-html)
 	      title (format "%s (%d)" (nth 1 p) r)))
       
       (setq pt (make-point :x 0 :y 0 :r (+ (log r) 30)
 			   :old-x 0 :old-y 0
-			   :fill (random-color-html)
+			   :fill color
 			   :href (concat (if flag "rev:" "time:") id)
 			   :text title
 			   :title (graph-brain--shorten title)))
@@ -619,6 +637,7 @@
     (define-key map "/" 'graph-brain--search)
     (define-key map "d" 'graph-brain--node-delete)
     (define-key map "G" 'graph-brain--view-wheel-git)
+    (define-key map "L" 'graph-brain--view-git-log)
     (define-key map "w" 'graph-brain--view-wheel)
     (define-key map "g" 'graph-brain--view-group)
     (define-key map "n" 'graph-brain--view-node)
